@@ -31,6 +31,7 @@
 #include "libavutil/bprint.h"
 #include "avcodec.h"
 #include "ass.h"
+#include "internal.h"
 
 static int indexof(const char *s, int c)
 {
@@ -99,7 +100,7 @@ static char *microdvd_load_tags(struct microdvd_tag *tags, char *s)
         case 'Y':
             tag.persistent = MICRODVD_PERSISTENT_ON;
         case 'y':
-            while (*s && *s != '}') {
+            while (*s && *s != '}' && s - start < 256) {
                 int style_index = indexof(MICRODVD_STYLES, *s);
 
                 if (style_index >= 0)
@@ -214,7 +215,7 @@ static void microdvd_open_tags(AVBPrint *new_line, struct microdvd_tag *tags)
             break;
 
         case 'c':
-            av_bprintf(new_line, "{\\c&H%06X&}", tags[i].data1);
+            av_bprintf(new_line, "{\\c&H%06"PRIX32"&}", tags[i].data1);
             break;
 
         case 'f':
@@ -223,7 +224,7 @@ static void microdvd_open_tags(AVBPrint *new_line, struct microdvd_tag *tags)
             break;
 
         case 's':
-            av_bprintf(new_line, "{\\fs%d}", tags[i].data1);
+            av_bprintf(new_line, "{\\fs%"PRId32"}", tags[i].data1);
             break;
 
         case 'p':
@@ -232,7 +233,7 @@ static void microdvd_open_tags(AVBPrint *new_line, struct microdvd_tag *tags)
             break;
 
         case 'o':
-            av_bprintf(new_line, "{\\pos(%d,%d)}",
+            av_bprintf(new_line, "{\\pos(%"PRId32",%"PRId32")}",
                        tags[i].data1, tags[i].data2);
             break;
         }
@@ -368,7 +369,7 @@ static int microdvd_init(AVCodecContext *avctx)
                                   alignment);
 }
 
-AVCodec ff_microdvd_decoder = {
+const AVCodec ff_microdvd_decoder = {
     .name         = "microdvd",
     .long_name    = NULL_IF_CONFIG_SMALL("MicroDVD subtitle"),
     .type         = AVMEDIA_TYPE_SUBTITLE,
@@ -377,4 +378,5 @@ AVCodec ff_microdvd_decoder = {
     .decode       = microdvd_decode_frame,
     .flush        = ff_ass_decoder_flush,
     .priv_data_size = sizeof(FFASSDecoderContext),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

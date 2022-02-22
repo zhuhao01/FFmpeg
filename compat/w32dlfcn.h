@@ -21,7 +21,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#if _WIN32_WINNT < 0x0602
+#include "config.h"
+#if (_WIN32_WINNT < 0x0602) || HAVE_WINRT
 #include "libavutil/wchar_filename.h"
 #endif
 /**
@@ -41,7 +42,7 @@ static inline HMODULE win32_dlopen(const char *name)
         DWORD pathlen;
         if (utf8towchar(name, &name_w))
             goto exit;
-        path = (wchar_t *)av_mallocz_array(MAX_PATH, sizeof(wchar_t));
+        path = (wchar_t *)av_calloc(MAX_PATH, sizeof(wchar_t));
         // Try local directory first
         pathlen = GetModuleFileNameW(NULL, path, MAX_PATH);
         pathlen = wcsrchr(path, '\\') - path;
@@ -71,7 +72,17 @@ exit:
 #ifndef LOAD_LIBRARY_SEARCH_SYSTEM32
 #   define LOAD_LIBRARY_SEARCH_SYSTEM32        0x00000800
 #endif
+#if HAVE_WINRT
+    wchar_t *name_w = NULL;
+    int ret;
+    if (utf8towchar(name, &name_w))
+        return NULL;
+    ret = LoadPackagedLibrary(name_w, 0);
+    av_free(name_w);
+    return ret;
+#else
     return LoadLibraryExA(name, NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+#endif
 }
 #define dlopen(name, flags) win32_dlopen(name)
 #define dlclose FreeLibrary

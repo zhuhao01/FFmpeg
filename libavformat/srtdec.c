@@ -30,7 +30,7 @@ typedef struct {
     FFDemuxSubtitlesQueue q;
 } SRTContext;
 
-static int srt_probe(AVProbeData *p)
+static int srt_probe(const AVProbeData *p)
 {
     int v;
     char buf[64], *pbuf;
@@ -78,7 +78,7 @@ static int get_event_info(const char *line, struct event_info *ei)
     ei->pts = AV_NOPTS_VALUE;
     ei->pos = -1;
     if (sscanf(line, "%d:%d:%d%*1[,.]%d --> %d:%d:%d%*1[,.]%d"
-               "%*[ ]X1:%u X2:%u Y1:%u Y2:%u",
+               "%*[ ]X1:%"PRId32" X2:%"PRId32" Y1:%"PRId32" Y2:%"PRId32,
                &hh1, &mm1, &ss1, &ms1,
                &hh2, &mm2, &ss2, &ms2,
                &ei->x1, &ei->x2, &ei->y1, &ei->y2) >= 8) {
@@ -211,34 +211,14 @@ end:
     return res;
 }
 
-static int srt_read_packet(AVFormatContext *s, AVPacket *pkt)
-{
-    SRTContext *srt = s->priv_data;
-    return ff_subtitles_queue_read_packet(&srt->q, pkt);
-}
-
-static int srt_read_seek(AVFormatContext *s, int stream_index,
-                         int64_t min_ts, int64_t ts, int64_t max_ts, int flags)
-{
-    SRTContext *srt = s->priv_data;
-    return ff_subtitles_queue_seek(&srt->q, s, stream_index,
-                                   min_ts, ts, max_ts, flags);
-}
-
-static int srt_read_close(AVFormatContext *s)
-{
-    SRTContext *srt = s->priv_data;
-    ff_subtitles_queue_clean(&srt->q);
-    return 0;
-}
-
-AVInputFormat ff_srt_demuxer = {
+const AVInputFormat ff_srt_demuxer = {
     .name        = "srt",
     .long_name   = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
     .priv_data_size = sizeof(SRTContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe  = srt_probe,
     .read_header = srt_read_header,
-    .read_packet = srt_read_packet,
-    .read_seek2  = srt_read_seek,
-    .read_close  = srt_read_close,
+    .read_packet = ff_subtitles_read_packet,
+    .read_seek2  = ff_subtitles_read_seek,
+    .read_close  = ff_subtitles_read_close,
 };

@@ -39,19 +39,19 @@ static av_cold int init_coef_vlc(VLC *vlc, uint16_t **prun_table,
     const uint8_t  *table_bits   = vlc_table->huffbits;
     const uint32_t *table_codes  = vlc_table->huffcodes;
     const uint16_t *levels_table = vlc_table->levels;
-    uint16_t *run_table, *level_table, *int_table;
+    uint16_t *run_table, *int_table;
     float *flevel_table;
-    int i, l, j, k, level;
+    int i, l, j, k, level, ret;
 
-    init_vlc(vlc, VLCBITS, n, table_bits, 1, 1, table_codes, 4, 4, 0);
+    ret = init_vlc(vlc, VLCBITS, n, table_bits, 1, 1, table_codes, 4, 4, 0);
+    if (ret < 0)
+        return ret;
 
     run_table    = av_malloc_array(n, sizeof(uint16_t));
-    level_table  = av_malloc_array(n, sizeof(uint16_t));
     flevel_table = av_malloc_array(n, sizeof(*flevel_table));
     int_table    = av_malloc_array(n, sizeof(uint16_t));
-    if (!run_table || !level_table || !flevel_table || !int_table) {
+    if (!run_table || !flevel_table || !int_table) {
         av_freep(&run_table);
-        av_freep(&level_table);
         av_freep(&flevel_table);
         av_freep(&int_table);
         return AVERROR(ENOMEM);
@@ -64,7 +64,6 @@ static av_cold int init_coef_vlc(VLC *vlc, uint16_t **prun_table,
         l            = levels_table[k++];
         for (j = 0; j < l; j++) {
             run_table[i]    = j;
-            level_table[i]  = level;
             flevel_table[i] = level;
             i++;
         }
@@ -73,7 +72,6 @@ static av_cold int init_coef_vlc(VLC *vlc, uint16_t **prun_table,
     *prun_table   = run_table;
     *plevel_table = flevel_table;
     *pint_table   = int_table;
-    av_free(level_table);
 
     return 0;
 }
@@ -83,7 +81,7 @@ av_cold int ff_wma_init(AVCodecContext *avctx, int flags2)
     WMACodecContext *s = avctx->priv_data;
     int i, ret;
     float bps1, high_freq;
-    volatile float bps;
+    float bps;
     int sample_rate1;
     int coef_vlc_table;
 
@@ -186,7 +184,7 @@ av_cold int ff_wma_init(AVCodecContext *avctx, int flags2)
     }
     ff_dlog(s->avctx, "flags2=0x%x\n", flags2);
     ff_dlog(s->avctx, "version=%d channels=%d sample_rate=%d bitrate=%"PRId64" block_align=%d\n",
-            s->version, avctx->channels, avctx->sample_rate, (int64_t)avctx->bit_rate,
+            s->version, avctx->channels, avctx->sample_rate, avctx->bit_rate,
             avctx->block_align);
     ff_dlog(s->avctx, "bps=%f bps1=%f high_freq=%f bitoffset=%d\n",
             bps, bps1, high_freq, s->byte_offset_bits);
@@ -279,16 +277,6 @@ av_cold int ff_wma_init(AVCodecContext *avctx, int flags2)
                     s->exponent_high_bands[k][j++] = end - start;
             }
             s->exponent_high_sizes[k] = j;
-#if 0
-            ff_tlog(s->avctx, "%5d: coefs_end=%d high_band_start=%d nb_high_bands=%d: ",
-                    s->frame_len >> k,
-                    s->coefs_end[k],
-                    s->high_band_start[k],
-                    s->exponent_high_sizes[k]);
-            for (j = 0; j < s->exponent_high_sizes[k]; j++)
-                ff_tlog(s->avctx, " %d", s->exponent_high_bands[k][j]);
-            ff_tlog(s->avctx, "\n");
-#endif /* 0 */
         }
     }
 
@@ -471,7 +459,7 @@ int ff_wma_run_level_decode(AVCodecContext *avctx, GetBitContext *gb,
                         if (get_bits1(gb)) {
                             av_log(avctx, AV_LOG_ERROR,
                                    "broken escape sequence\n");
-                            return -1;
+                            return AVERROR_INVALIDDATA;
                         } else
                             offset += get_bits(gb, frame_len_bits) + 4;
                     } else
@@ -489,7 +477,7 @@ int ff_wma_run_level_decode(AVCodecContext *avctx, GetBitContext *gb,
                offset,
                num_coefs
               );
-        return -1;
+        return AVERROR_INVALIDDATA;
     }
 
     return 0;

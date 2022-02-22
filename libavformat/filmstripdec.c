@@ -41,7 +41,7 @@ static int read_header(AVFormatContext *s)
     AVIOContext *pb = s->pb;
     AVStream *st;
 
-    if (!s->pb->seekable)
+    if (!(s->pb->seekable & AVIO_SEEKABLE_NORMAL))
         return AVERROR(EIO);
 
     avio_seek(pb, avio_size(pb) - 36, SEEK_SET);
@@ -104,7 +104,7 @@ static int read_seek(AVFormatContext *s, int stream_index, int64_t timestamp, in
     return 0;
 }
 
-AVInputFormat ff_filmstrip_demuxer = {
+const AVInputFormat ff_filmstrip_demuxer = {
     .name           = "filmstrip",
     .long_name      = NULL_IF_CONFIG_SMALL("Adobe Filmstrip"),
     .priv_data_size = sizeof(FilmstripDemuxContext),

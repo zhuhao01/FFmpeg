@@ -58,7 +58,7 @@ enum ColorMode {
     COLOR_MODE_COUNT
 };
 
-typedef struct {
+typedef struct ColorMatrixContext {
     const AVClass *class;
     int yuv_convert[25][3][3];
     int interlaced;
@@ -404,21 +404,6 @@ static int config_input(AVFilterLink *inlink)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV444P,
-        AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_UYVY422,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
-
 static int filter_frame(AVFilterLink *link, AVFrame *in)
 {
     AVFilterContext *ctx = link->dst;
@@ -435,7 +420,7 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
     av_frame_copy_props(out, in);
 
     if (color->source == COLOR_MODE_NONE) {
-        enum AVColorSpace cs = av_frame_get_colorspace(in);
+        enum AVColorSpace cs = in->colorspace;
         enum ColorMode source;
 
         switch(cs) {
@@ -456,11 +441,11 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
         color->mode = color->source * 5 + color->dest;
 
     switch(color->dest) {
-    case COLOR_MODE_BT709    : av_frame_set_colorspace(out, AVCOL_SPC_BT709)     ; break;
-    case COLOR_MODE_FCC      : av_frame_set_colorspace(out, AVCOL_SPC_FCC)       ; break;
-    case COLOR_MODE_SMPTE240M: av_frame_set_colorspace(out, AVCOL_SPC_SMPTE240M) ; break;
-    case COLOR_MODE_BT601    : av_frame_set_colorspace(out, AVCOL_SPC_BT470BG)   ; break;
-    case COLOR_MODE_BT2020   : av_frame_set_colorspace(out, AVCOL_SPC_BT2020_NCL); break;
+    case COLOR_MODE_BT709    : out->colorspace = AVCOL_SPC_BT709     ; break;
+    case COLOR_MODE_FCC      : out->colorspace = AVCOL_SPC_FCC       ; break;
+    case COLOR_MODE_SMPTE240M: out->colorspace = AVCOL_SPC_SMPTE240M ; break;
+    case COLOR_MODE_BT601    : out->colorspace = AVCOL_SPC_BT470BG   ; break;
+    case COLOR_MODE_BT2020   : out->colorspace = AVCOL_SPC_BT2020_NCL; break;
     }
 
     td.src = in;
@@ -473,17 +458,17 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
     td.c7 = color->yuv_convert[color->mode][2][2];
 
     if (in->format == AV_PIX_FMT_YUV444P)
-        ctx->internal->execute(ctx, process_slice_yuv444p, &td, NULL,
-                               FFMIN(in->height, ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, process_slice_yuv444p, &td, NULL,
+                          FFMIN(in->height, ff_filter_get_nb_threads(ctx)));
     else if (in->format == AV_PIX_FMT_YUV422P)
-        ctx->internal->execute(ctx, process_slice_yuv422p, &td, NULL,
-                               FFMIN(in->height, ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, process_slice_yuv422p, &td, NULL,
+                          FFMIN(in->height, ff_filter_get_nb_threads(ctx)));
     else if (in->format == AV_PIX_FMT_YUV420P)
-        ctx->internal->execute(ctx, process_slice_yuv420p, &td, NULL,
-                               FFMIN(in->height / 2, ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, process_slice_yuv420p, &td, NULL,
+                          FFMIN(in->height / 2, ff_filter_get_nb_threads(ctx)));
     else
-        ctx->internal->execute(ctx, process_slice_uyvy422, &td, NULL,
-                               FFMIN(in->height, ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, process_slice_uyvy422, &td, NULL,
+                          FFMIN(in->height, ff_filter_get_nb_threads(ctx)));
 
     av_frame_free(&in);
     return ff_filter_frame(outlink, out);
@@ -496,7 +481,6 @@ static const AVFilterPad colormatrix_inputs[] = {
         .config_props = config_input,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad colormatrix_outputs[] = {
@@ -504,17 +488,19 @@ static const AVFilterPad colormatrix_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_colormatrix = {
+const AVFilter ff_vf_colormatrix = {
     .name          = "colormatrix",
     .description   = NULL_IF_CONFIG_SMALL("Convert color matrix."),
     .priv_size     = sizeof(ColorMatrixContext),
     .init          = init,
-    .query_formats = query_formats,
-    .inputs        = colormatrix_inputs,
-    .outputs       = colormatrix_outputs,
+    FILTER_INPUTS(colormatrix_inputs),
+    FILTER_OUTPUTS(colormatrix_outputs),
+    FILTER_PIXFMTS(AV_PIX_FMT_YUV444P,
+                   AV_PIX_FMT_YUV422P,
+                   AV_PIX_FMT_YUV420P,
+                   AV_PIX_FMT_UYVY422),
     .priv_class    = &colormatrix_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

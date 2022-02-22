@@ -31,6 +31,10 @@
  * Version 2 files support by Konstantin Shishkov
  */
 
+#include "config.h"
+
+#define CACHED_BITSTREAM_READER HAVE_FAST_64BIT
+#define UNCHECKED_BITSTREAM_READER 1
 #include "avcodec.h"
 #include "get_bits.h"
 #include "huffman.h"
@@ -160,9 +164,7 @@ static int decode_frame(AVCodecContext *avctx,
     header_size = (header & (1<<30))? 8 : 4; /* bit 30 means pad to 8 bytes */
 
     if (version > 5) {
-        av_log(avctx, AV_LOG_ERROR,
-               "This file is encoded with Fraps version %d. " \
-               "This codec can only decode versions <= 5.\n", version);
+        avpriv_report_missing_feature(avctx, "Fraps version %u", version);
         return AVERROR_PATCHWELCOME;
     }
 
@@ -340,7 +342,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
 }
 
 
-AVCodec ff_fraps_decoder = {
+const AVCodec ff_fraps_decoder = {
     .name           = "fraps",
     .long_name      = NULL_IF_CONFIG_SMALL("Fraps"),
     .type           = AVMEDIA_TYPE_VIDEO,

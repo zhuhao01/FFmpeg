@@ -21,20 +21,20 @@
 #ifndef AVFILTER_SHOWCQT_H
 #define AVFILTER_SHOWCQT_H
 
-#include "libavcodec/avfft.h"
+#include "libavutil/tx.h"
 #include "avfilter.h"
 #include "internal.h"
 
-typedef struct {
-    FFTSample *val;
+typedef struct Coeffs {
+    float *val;
     int start, len;
 } Coeffs;
 
-typedef struct {
+typedef struct RGBFloat {
     float r, g, b;
 } RGBFloat;
 
-typedef struct {
+typedef struct YUVFloat {
     float y, u, v;
 } YUVFloat;
 
@@ -43,7 +43,7 @@ typedef union {
     YUVFloat yuv;
 } ColorFloat;
 
-typedef struct {
+typedef struct ShowCQTContext {
     const AVClass       *class;
     AVFilterContext     *ctx;
     AVFrame             *axis_frame;
@@ -55,13 +55,17 @@ typedef struct {
     AVRational          step_frac;
     int                 remaining_frac;
     int                 remaining_fill;
+    int                 remaining_fill_max;
     int64_t             next_pts;
     double              *freq;
-    FFTContext          *fft_ctx;
+    AVTXContext         *fft_ctx;
+    av_tx_fn            tx_fn;
     Coeffs              *coeffs;
-    FFTComplex          *fft_data;
-    FFTComplex          *fft_result;
-    FFTComplex          *cqt_result;
+    AVComplexFloat      *fft_data;
+    AVComplexFloat      *fft_input;
+    AVComplexFloat      *fft_result;
+    AVComplexFloat      *cqt_result;
+    float               *attack_data;
     int                 fft_bits;
     int                 fft_len;
     int                 cqt_len;
@@ -74,7 +78,7 @@ typedef struct {
     float               cmatrix[3][3];
     float               cscheme_v[6];
     /* callback */
-    void                (*cqt_calc)(FFTComplex *dst, const FFTComplex *src, const Coeffs *coeffs,
+    void                (*cqt_calc)(AVComplexFloat *dst, const AVComplexFloat *src, const Coeffs *coeffs,
                                     int len, int fft_len);
     void                (*permute_coeffs)(float *v, int len);
     void                (*draw_bar)(AVFrame *out, const float *h, const float *rcp_h,
@@ -104,6 +108,7 @@ typedef struct {
     float               bar_g;
     float               bar_t;
     double              timeclamp;
+    double              attack;
     double              basefreq;
     double              endfreq;
     float               coeffclamp; /* deprecated - ignored */

@@ -24,6 +24,7 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/cpu.h"
+#include "libavutil/mem_internal.h"
 #include "libavutil/x86/asm.h"
 #include "libavutil/x86/cpu.h"
 #include "libavcodec/me_cmp.h"
@@ -89,7 +90,7 @@ hadamard_func(mmxext)
 hadamard_func(sse2)
 hadamard_func(ssse3)
 
-#if HAVE_YASM
+#if HAVE_X86ASM
 static int nsse16_mmx(MpegEncContext *c, uint8_t *pix1, uint8_t *pix2,
                       ptrdiff_t stride, int h)
 {
@@ -121,7 +122,7 @@ static int nsse8_mmx(MpegEncContext *c, uint8_t *pix1, uint8_t *pix2,
         return score1 + FFABS(score2) * 8;
 }
 
-#endif /* HAVE_YASM */
+#endif /* HAVE_X86ASM */
 
 #if HAVE_INLINE_ASM
 
@@ -130,7 +131,7 @@ static int vsad_intra16_mmx(MpegEncContext *v, uint8_t *pix, uint8_t *dummy,
 {
     int tmp;
 
-    av_assert2((((int) pix) & 7) == 0);
+    av_assert2(((uintptr_t) pix & 7) == 0);
     av_assert2((stride & 7) == 0);
 
 #define SUM(in0, in1, out0, out1)               \
@@ -194,8 +195,8 @@ static int vsad16_mmx(MpegEncContext *v, uint8_t *pix1, uint8_t *pix2,
 {
     int tmp;
 
-    av_assert2((((int) pix1) & 7) == 0);
-    av_assert2((((int) pix2) & 7) == 0);
+    av_assert2(((uintptr_t)pix1 & 7) == 0);
+    av_assert2(((uintptr_t)pix2 & 7) == 0);
     av_assert2((stride & 7) == 0);
 
 #define SUM(in0, in1, out0, out1)       \
@@ -586,7 +587,7 @@ av_cold void ff_me_cmp_init_x86(MECmpContext *c, AVCodecContext *avctx)
         c->sum_abs_dctelem   = ff_sum_abs_dctelem_mmx;
         c->sse[0]            = ff_sse16_mmx;
         c->sse[1]            = ff_sse8_mmx;
-#if HAVE_YASM
+#if HAVE_X86ASM
         c->nsse[0]           = nsse16_mmx;
         c->nsse[1]           = nsse8_mmx;
 #endif

@@ -75,7 +75,7 @@ AVAudioFifo *av_audio_fifo_alloc(enum AVSampleFormat sample_fmt, int channels,
     af->sample_size = buf_size / nb_samples;
     af->nb_buffers  = av_sample_fmt_is_planar(sample_fmt) ? channels : 1;
 
-    af->buf = av_mallocz_array(af->nb_buffers, sizeof(*af->buf));
+    af->buf = av_calloc(af->nb_buffers, sizeof(*af->buf));
     if (!af->buf)
         goto error;
 
@@ -180,7 +180,7 @@ int av_audio_fifo_peek_at(AVAudioFifo *af, void **data, int nb_samples, int offs
 
 int av_audio_fifo_read(AVAudioFifo *af, void **data, int nb_samples)
 {
-    int i, ret, size;
+    int i, size;
 
     if (nb_samples < 0)
         return AVERROR(EINVAL);
@@ -190,7 +190,7 @@ int av_audio_fifo_read(AVAudioFifo *af, void **data, int nb_samples)
 
     size = nb_samples * af->sample_size;
     for (i = 0; i < af->nb_buffers; i++) {
-        if ((ret = av_fifo_generic_read(af->buf[i], data[i], size, NULL)) < 0)
+        if (av_fifo_generic_read(af->buf[i], data[i], size, NULL) < 0)
             return AVERROR_BUG;
     }
     af->nb_samples -= nb_samples;

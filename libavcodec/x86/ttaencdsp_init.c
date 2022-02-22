@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/attributes.h"
 #include "libavcodec/ttaencdsp.h"
 #include "libavutil/x86/cpu.h"
 #include "config.h"
@@ -31,7 +32,7 @@ void ff_ttaenc_filter_process_sse4(int32_t *qm, int32_t *dx, int32_t *dl,
 
 av_cold void ff_ttaencdsp_init_x86(TTAEncDSPContext *c)
 {
-#if HAVE_YASM
+#if HAVE_X86ASM
     int cpu_flags = av_get_cpu_flags();
 
     if (EXTERNAL_SSSE3(cpu_flags))

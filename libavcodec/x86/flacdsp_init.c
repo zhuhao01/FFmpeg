@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/attributes.h"
 #include "libavcodec/flacdsp.h"
 #include "libavutil/x86/cpu.h"
 #include "config.h"
@@ -53,7 +54,7 @@ DECORRELATE_FUNCS(32,  avx);
 av_cold void ff_flacdsp_init_x86(FLACDSPContext *c, enum AVSampleFormat fmt, int channels,
                                  int bps)
 {
-#if HAVE_YASM
+#if HAVE_X86ASM
     int cpu_flags = av_get_cpu_flags();
 
 #if CONFIG_FLAC_DECODER
@@ -111,5 +112,5 @@ av_cold void ff_flacdsp_init_x86(FLACDSPContext *c, enum AVSampleFormat fmt, int
             c->lpc16_encode = ff_flac_enc_lpc_16_sse4;
     }
 #endif
-#endif /* HAVE_YASM */
+#endif /* HAVE_X86ASM */
 }

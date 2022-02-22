@@ -43,7 +43,7 @@ static int y41p_decode_frame(AVCodecContext *avctx, void *data,
     uint8_t *y, *u, *v;
     int i, j, ret;
 
-    if (avpkt->size < 3LL * avctx->height * avctx->width / 2) {
+    if (avpkt->size < 3LL * avctx->height * FFALIGN(avctx->width, 8) / 2) {
         av_log(avctx, AV_LOG_ERROR, "Insufficient input data.\n");
         return AVERROR(EINVAL);
     }
@@ -81,7 +81,7 @@ static int y41p_decode_frame(AVCodecContext *avctx, void *data,
     return avpkt->size;
 }
 
-AVCodec ff_y41p_decoder = {
+const AVCodec ff_y41p_decoder = {
     .name         = "y41p",
     .long_name    = NULL_IF_CONFIG_SMALL("Uncompressed YUV 4:1:1 12-bit"),
     .type         = AVMEDIA_TYPE_VIDEO,
@@ -89,4 +89,5 @@ AVCodec ff_y41p_decoder = {
     .init         = y41p_decode_init,
     .decode       = y41p_decode_frame,
     .capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

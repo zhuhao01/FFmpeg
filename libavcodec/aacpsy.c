@@ -303,18 +303,21 @@ static av_cold int psy_3gpp_init(FFPsyContext *ctx) {
     float bark;
     int i, j, g, start;
     float prev, minscale, minath, minsnr, pe_min;
-    int chan_bitrate = ctx->avctx->bit_rate / ((ctx->avctx->flags & CODEC_FLAG_QSCALE) ? 2.0f : ctx->avctx->channels);
+    int chan_bitrate = ctx->avctx->bit_rate / ((ctx->avctx->flags & AV_CODEC_FLAG_QSCALE) ? 2.0f : ctx->avctx->channels);
 
     const int bandwidth    = ctx->cutoff ? ctx->cutoff : AAC_CUTOFF(ctx->avctx);
     const float num_bark   = calc_bark((float)bandwidth);
 
+    if (bandwidth <= 0)
+        return AVERROR(EINVAL);
+
     ctx->model_priv_data = av_mallocz(sizeof(AacPsyContext));
     if (!ctx->model_priv_data)
         return AVERROR(ENOMEM);
-    pctx = (AacPsyContext*) ctx->model_priv_data;
+    pctx = ctx->model_priv_data;
     pctx->global_quality = (ctx->avctx->global_quality ? ctx->avctx->global_quality : 120) * 0.01f;
 
-    if (ctx->avctx->flags & CODEC_FLAG_QSCALE) {
+    if (ctx->avctx->flags & AV_CODEC_FLAG_QSCALE) {
         /* Use the target average bitrate to compute spread parameters */
         chan_bitrate = (int)(chan_bitrate / 120.0 * (ctx->avctx->global_quality ? ctx->avctx->global_quality : 120));
     }
@@ -367,7 +370,7 @@ static av_cold int psy_3gpp_init(FFPsyContext *ctx) {
         }
     }
 
-    pctx->ch = av_mallocz_array(ctx->avctx->channels, sizeof(AacPsyChannel));
+    pctx->ch = av_calloc(ctx->avctx->channels, sizeof(*pctx->ch));
     if (!pctx->ch) {
         av_freep(&ctx->model_priv_data);
         return AVERROR(ENOMEM);
@@ -704,7 +707,7 @@ static void psy_3gpp_analyze_channel(FFPsyContext *ctx, int channel,
 
     /* 5.6.1.3.2 "Calculation of the desired perceptual entropy" */
     ctx->ch[channel].entropy = pe;
-    if (ctx->avctx->flags & CODEC_FLAG_QSCALE) {
+    if (ctx->avctx->flags & AV_CODEC_FLAG_QSCALE) {
         /* (2.5 * 120) achieves almost transparent rate, and we want to give
          * ample room downwards, so we make that equivalent to QSCALE=2.4
          */
@@ -794,7 +797,7 @@ static void psy_3gpp_analyze_channel(FFPsyContext *ctx, int channel,
 
         if (pe < 1.15f * desired_pe) {
             /* 6.6.1.3.6 "Final threshold modification by linearization" */
-            norm_fac = 1.0f / norm_fac;
+            norm_fac = norm_fac ? 1.0f / norm_fac : 0;
             for (w = 0; w < wi->num_windows*16; w += 16) {
                 for (g = 0; g < num_bands; g++) {
                     AacPsyBand *band = &pch->band[w+g];
@@ -855,7 +858,8 @@ static void psy_3gpp_analyze(FFPsyContext *ctx, int channel,
 static av_cold void psy_3gpp_end(FFPsyContext *apc)
 {
     AacPsyContext *pctx = (AacPsyContext*) apc->model_priv_data;
-    av_freep(&pctx->ch);
+    if (pctx)
+        av_freep(&pctx->ch);
     av_freep(&apc->model_priv_data);
 }
 

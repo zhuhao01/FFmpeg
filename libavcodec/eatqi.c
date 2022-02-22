@@ -26,6 +26,8 @@
  * @see http://wiki.multimedia.cx/index.php?title=Electronic_Arts_TQI
  */
 
+#include "libavutil/mem_internal.h"
+
 #include "avcodec.h"
 #include "blockdsp.h"
 #include "bswapdsp.h"
@@ -51,7 +53,7 @@ typedef struct TqiContext {
     uint16_t intra_matrix[64];
     int last_dc[3];
 
-    DECLARE_ALIGNED(16, int16_t, block)[6][64];
+    DECLARE_ALIGNED(32, int16_t, block)[6][64];
 } TqiContext;
 
 static av_cold int tqi_decode_init(AVCodecContext *avctx)
@@ -83,7 +85,7 @@ static int tqi_decode_mb(TqiContext *t, int16_t (*block)[64])
         if (ret < 0) {
             av_log(t->avctx, AV_LOG_ERROR, "ac-tex damaged at %d %d\n",
                    t->mb_x, t->mb_y);
-            return -1;
+            return ret;
         }
     }
 
@@ -94,7 +96,7 @@ static inline void tqi_idct_put(AVCodecContext *avctx, AVFrame *frame,
                                 int16_t (*block)[64])
 {
     TqiContext *t = avctx->priv_data;
-    int linesize = frame->linesize[0];
+    ptrdiff_t linesize = frame->linesize[0];
     uint8_t *dest_y  = frame->data[0] + t->mb_y * 16 * linesize           + t->mb_x * 16;
     uint8_t *dest_cb = frame->data[1] + t->mb_y *  8 * frame->linesize[1] + t->mb_x *  8;
     uint8_t *dest_cr = frame->data[2] + t->mb_y *  8 * frame->linesize[2] + t->mb_x *  8;
@@ -112,7 +114,7 @@ static inline void tqi_idct_put(AVCodecContext *avctx, AVFrame *frame,
 
 static void tqi_calculate_qtable(TqiContext *t, int quant)
 {
-    const int qscale = (215 - 2*quant)*5;
+    const int64_t qscale = (215 - 2*quant)*5;
     int i;
 
     t->intra_matrix[0] = (ff_inv_aanscales[0] * ff_mpeg1_default_intra_matrix[0]) >> 11;
@@ -130,6 +132,9 @@ static int tqi_decode_frame(AVCodecContext *avctx,
     TqiContext *t = avctx->priv_data;
     AVFrame *frame = data;
     int ret, w, h;
+
+    if (buf_size < 12)
+        return AVERROR_INVALIDDATA;
 
     t->avctx = avctx;
 
@@ -176,7 +181,7 @@ static av_cold int tqi_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_eatqi_decoder = {
+const AVCodec ff_eatqi_decoder = {
     .name           = "eatqi",
     .long_name      = NULL_IF_CONFIG_SMALL("Electronic Arts TQI Video"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -186,4 +191,5 @@ AVCodec ff_eatqi_decoder = {
     .close          = tqi_decode_end,
     .decode         = tqi_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

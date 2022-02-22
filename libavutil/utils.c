@@ -37,13 +37,6 @@ const char *av_version_info(void)
 
 unsigned avutil_version(void)
 {
-    static int checks_done;
-    if (checks_done)
-        return LIBAVUTIL_VERSION_INT;
-
-#if FF_API_VDPAU
-    av_assert0(AV_PIX_FMT_VDA_VLD == 81); //check if the pix fmt enum has not had anything inserted or removed by mistake
-#endif
     av_assert0(AV_SAMPLE_FMT_DBLP == 9);
     av_assert0(AVMEDIA_TYPE_ATTACHMENT == 4);
     av_assert0(AV_PICTURE_TYPE_BI == 7);
@@ -61,7 +54,6 @@ unsigned avutil_version(void)
         av_log(NULL, AV_LOG_ERROR, "Libavutil has been linked to a broken llrint()\n");
     }
 
-    checks_done = 1;
     return LIBAVUTIL_VERSION_INT;
 }
 
@@ -73,7 +65,7 @@ const char *avutil_configuration(void)
 const char *avutil_license(void)
 {
 #define LICENSE_PREFIX "libavutil license: "
-    return LICENSE_PREFIX FFMPEG_LICENSE + sizeof(LICENSE_PREFIX) - 1;
+    return &LICENSE_PREFIX FFMPEG_LICENSE[sizeof(LICENSE_PREFIX) - 1];
 }
 
 const char *av_get_media_type_string(enum AVMediaType media_type)
@@ -121,6 +113,29 @@ unsigned av_int_list_length_for_size(unsigned elsize,
     return i;
 }
 
+char *av_fourcc_make_string(char *buf, uint32_t fourcc)
+{
+    int i;
+    char *orig_buf = buf;
+    size_t buf_size = AV_FOURCC_MAX_STRING_SIZE;
+
+    for (i = 0; i < 4; i++) {
+        const int c = fourcc & 0xff;
+        const int print_chr = (c >= '0' && c <= '9') ||
+                              (c >= 'a' && c <= 'z') ||
+                              (c >= 'A' && c <= 'Z') ||
+                              (c && strchr(". -_", c));
+        const int len = snprintf(buf, buf_size, print_chr ? "%c" : "[%d]", c);
+        if (len < 0)
+            break;
+        buf += len;
+        buf_size = buf_size > len ? buf_size - len : 0;
+        fourcc >>= 8;
+    }
+
+    return orig_buf;
+}
+
 AVRational av_get_time_base_q(void)
 {
     return (AVRational){1, AV_TIME_BASE};
@@ -129,7 +144,7 @@ AVRational av_get_time_base_q(void)
 void av_assert0_fpu(void) {
 #if HAVE_MMX_INLINE
     uint16_t state[14];
-     __asm volatile (
+     __asm__ volatile (
         "fstenv %0 \n\t"
         : "+m" (state)
         :

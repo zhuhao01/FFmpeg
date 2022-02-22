@@ -93,6 +93,24 @@ int main(void)
     TEST_STRNSTR(haystack, needle [2], strlen(haystack), NULL       );
     TEST_STRNSTR(haystack, strings[1], strlen(haystack), haystack   );
 
+    /*Testing av_strireplace()*/
+    #define TEST_STRIREPLACE(haystack, needle, expected) \
+        ptr = av_strireplace(haystack, needle, "instead"); \
+        if (ptr == NULL) { \
+            printf("error, received null pointer!\n"); \
+        } else { \
+            if (strcmp(ptr, expected) != 0) \
+                printf( "expected: %s, received: %s\n", expected, ptr); \
+            av_free(ptr); \
+        }
+
+    TEST_STRIREPLACE(haystack, needle [0], "Education consists mainly in what we have uninstead");
+    TEST_STRIREPLACE(haystack, needle [1], "Education consists mainly in what we have instead");
+    TEST_STRIREPLACE(haystack, needle [2], "Education consists mainly in what we have instead.");
+    TEST_STRIREPLACE(haystack, needle [1], "Education consists mainly in what we have instead");
+
+#if FF_API_D2STR
+FF_DISABLE_DEPRECATION_WARNINGS
     /*Testing av_d2str()*/
     #define TEST_D2STR(value, expected) \
         if((ptr = av_d2str(value)) == NULL){ \
@@ -105,5 +123,7 @@ int main(void)
     TEST_D2STR(0         ,  "0.000000");
     TEST_D2STR(-1.2333234, "-1.233323");
     TEST_D2STR(-1.2333237, "-1.233324");
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     return 0;
 }

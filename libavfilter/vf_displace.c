@@ -31,6 +31,7 @@ enum EdgeMode {
     EDGE_BLANK,
     EDGE_SMEAR,
     EDGE_WRAP,
+    EDGE_MIRROR,
     EDGE_NB
 };
 
@@ -53,31 +54,27 @@ typedef struct DisplaceContext {
 
 static const AVOption displace_options[] = {
     { "edge", "set edge mode", OFFSET(edge), AV_OPT_TYPE_INT, {.i64=EDGE_SMEAR}, 0, EDGE_NB-1, FLAGS, "edge" },
-    {   "blank", "", 0, AV_OPT_TYPE_CONST, {.i64=EDGE_BLANK}, 0, 0, FLAGS, "edge" },
-    {   "smear", "", 0, AV_OPT_TYPE_CONST, {.i64=EDGE_SMEAR}, 0, 0, FLAGS, "edge" },
-    {   "wrap" , "", 0, AV_OPT_TYPE_CONST, {.i64=EDGE_WRAP},  0, 0, FLAGS, "edge" },
+    {   "blank",   "", 0, AV_OPT_TYPE_CONST, {.i64=EDGE_BLANK},  0, 0, FLAGS, "edge" },
+    {   "smear",   "", 0, AV_OPT_TYPE_CONST, {.i64=EDGE_SMEAR},  0, 0, FLAGS, "edge" },
+    {   "wrap" ,   "", 0, AV_OPT_TYPE_CONST, {.i64=EDGE_WRAP},   0, 0, FLAGS, "edge" },
+    {   "mirror" , "", 0, AV_OPT_TYPE_CONST, {.i64=EDGE_MIRROR}, 0, 0, FLAGS, "edge" },
     { NULL }
 };
 
 AVFILTER_DEFINE_CLASS(displace);
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
-        AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR, AV_PIX_FMT_RGBA, AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_0RGB, AV_PIX_FMT_0BGR, AV_PIX_FMT_RGB0, AV_PIX_FMT_BGR0,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
-    };
-
-    return ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
+    AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
+    AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR, AV_PIX_FMT_RGBA, AV_PIX_FMT_BGRA,
+    AV_PIX_FMT_0RGB, AV_PIX_FMT_0BGR, AV_PIX_FMT_RGB0, AV_PIX_FMT_BGR0,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
+};
 
 static void displace_planar(DisplaceContext *s, const AVFrame *in,
                             const AVFrame *xpic, const AVFrame *ypic,
@@ -127,6 +124,22 @@ static void displace_planar(DisplaceContext *s, const AVFrame *in,
                         Y += h;
                     if (X < 0)
                         X += w;
+                    dst[x] = src[Y * slinesize + X];
+                }
+                break;
+            case EDGE_MIRROR:
+                for (x = 0; x < w; x++) {
+                    int Y = y + ysrc[x] - 128;
+                    int X = x + xsrc[x] - 128;
+
+                    if (Y < 0)
+                        Y = (-Y) % h;
+                    if (X < 0)
+                        X = (-X) % w;
+                    if (Y >= h)
+                        Y = h - (Y % h) - 1;
+                    if (X >= w)
+                        X = w - (X % w) - 1;
                     dst[x] = src[Y * slinesize + X];
                 }
                 break;
@@ -196,6 +209,24 @@ static void displace_packed(DisplaceContext *s, const AVFrame *in,
                 }
             }
             break;
+        case EDGE_MIRROR:
+            for (x = 0; x < w; x++) {
+                for (c = 0; c < s->nb_components; c++) {
+                    int Y = y + ysrc[x * step + c] - 128;
+                    int X = x + xsrc[x * step + c] - 128;
+
+                    if (Y < 0)
+                        Y = (-Y) % h;
+                    if (X < 0)
+                        X = (-X) % w;
+                    if (Y >= h)
+                        Y = h - (Y % h) - 1;
+                    if (X >= w)
+                        X = w - (X % w) - 1;
+                    dst[x * step + c] = src[Y * slinesize + X * step + c];
+                }
+            }
+            break;
         }
 
         ysrc += ylinesize;
@@ -229,7 +260,7 @@ static int process_frame(FFFrameSync *fs)
 
         s->displace(s, in, xpic, ypic, out);
     }
-    out->pts = av_rescale_q(in->pts, s->fs.time_base, outlink->time_base);
+    out->pts = av_rescale_q(s->fs.pts, s->fs.time_base, outlink->time_base);
 
     return ff_filter_frame(outlink, out);
 }
@@ -275,38 +306,22 @@ static int config_output(AVFilterLink *outlink)
     FFFrameSyncIn *in;
     int ret;
 
-    if (srclink->format != xlink->format ||
-        srclink->format != ylink->format) {
-        av_log(ctx, AV_LOG_ERROR, "inputs must be of same pixel format\n");
-        return AVERROR(EINVAL);
-    }
-    if (srclink->w                       != xlink->w ||
-        srclink->h                       != xlink->h ||
-        srclink->sample_aspect_ratio.num != xlink->sample_aspect_ratio.num ||
-        srclink->sample_aspect_ratio.den != xlink->sample_aspect_ratio.den ||
-        srclink->w                       != ylink->w ||
-        srclink->h                       != ylink->h ||
-        srclink->sample_aspect_ratio.num != ylink->sample_aspect_ratio.num ||
-        srclink->sample_aspect_ratio.den != ylink->sample_aspect_ratio.den) {
+    if (srclink->w != xlink->w ||
+        srclink->h != xlink->h ||
+        srclink->w != ylink->w ||
+        srclink->h != ylink->h) {
         av_log(ctx, AV_LOG_ERROR, "First input link %s parameters "
-               "(size %dx%d, SAR %d:%d) do not match the corresponding "
-               "second input link %s parameters (%dx%d, SAR %d:%d) "
-               "and/or third input link %s parameters (%dx%d, SAR %d:%d)\n",
+               "(size %dx%d) do not match the corresponding "
+               "second input link %s parameters (%dx%d) "
+               "and/or third input link %s parameters (%dx%d)\n",
                ctx->input_pads[0].name, srclink->w, srclink->h,
-               srclink->sample_aspect_ratio.num,
-               srclink->sample_aspect_ratio.den,
                ctx->input_pads[1].name, xlink->w, xlink->h,
-               xlink->sample_aspect_ratio.num,
-               xlink->sample_aspect_ratio.den,
-               ctx->input_pads[2].name, ylink->w, ylink->h,
-               ylink->sample_aspect_ratio.num,
-               ylink->sample_aspect_ratio.den);
+               ctx->input_pads[2].name, ylink->w, ylink->h);
         return AVERROR(EINVAL);
     }
 
     outlink->w = srclink->w;
     outlink->h = srclink->h;
-    outlink->time_base = srclink->time_base;
     outlink->sample_aspect_ratio = srclink->sample_aspect_ratio;
     outlink->frame_rate = srclink->frame_rate;
 
@@ -330,19 +345,16 @@ static int config_output(AVFilterLink *outlink)
     s->fs.opaque   = s;
     s->fs.on_event = process_frame;
 
-    return ff_framesync_configure(&s->fs);
+    ret = ff_framesync_configure(&s->fs);
+    outlink->time_base = s->fs.time_base;
+
+    return ret;
 }
 
-static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
+static int activate(AVFilterContext *ctx)
 {
-    DisplaceContext *s = inlink->dst->priv;
-    return ff_framesync_filter_frame(&s->fs, inlink, buf);
-}
-
-static int request_frame(AVFilterLink *outlink)
-{
-    DisplaceContext *s = outlink->src->priv;
-    return ff_framesync_request_frame(&s->fs, outlink);
+    DisplaceContext *s = ctx->priv;
+    return ff_framesync_activate(&s->fs);
 }
 
 static av_cold void uninit(AVFilterContext *ctx)
@@ -356,20 +368,16 @@ static const AVFilterPad displace_inputs[] = {
     {
         .name         = "source",
         .type         = AVMEDIA_TYPE_VIDEO,
-        .filter_frame = filter_frame,
         .config_props = config_input,
     },
     {
         .name         = "xmap",
         .type         = AVMEDIA_TYPE_VIDEO,
-        .filter_frame = filter_frame,
     },
     {
         .name         = "ymap",
         .type         = AVMEDIA_TYPE_VIDEO,
-        .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad displace_outputs[] = {
@@ -377,19 +385,18 @@ static const AVFilterPad displace_outputs[] = {
         .name          = "default",
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
-        .request_frame = request_frame,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_displace = {
+const AVFilter ff_vf_displace = {
     .name          = "displace",
     .description   = NULL_IF_CONFIG_SMALL("Displace pixels."),
     .priv_size     = sizeof(DisplaceContext),
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = displace_inputs,
-    .outputs       = displace_outputs,
+    .activate      = activate,
+    FILTER_INPUTS(displace_inputs),
+    FILTER_OUTPUTS(displace_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &displace_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

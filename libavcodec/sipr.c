@@ -494,7 +494,7 @@ static av_cold int sipr_decoder_init(AVCodecContext * avctx)
         else                              ctx->mode = MODE_5k0;
         av_log(avctx, AV_LOG_WARNING,
                "Invalid block_align: %d. Mode %s guessed based on bitrate: %"PRId64"\n",
-               avctx->block_align, modes[ctx->mode].mode_name, (int64_t)avctx->bit_rate);
+               avctx->block_align, modes[ctx->mode].mode_name, avctx->bit_rate);
     }
 
     av_log(avctx, AV_LOG_DEBUG, "Mode: %s\n", modes[ctx->mode].mode_name);
@@ -562,7 +562,7 @@ static int sipr_decode_frame(AVCodecContext *avctx, void *data,
     return mode_par->bits_per_frame >> 3;
 }
 
-AVCodec ff_sipr_decoder = {
+const AVCodec ff_sipr_decoder = {
     .name           = "sipr",
     .long_name      = NULL_IF_CONFIG_SMALL("RealAudio SIPR / ACELP.NET"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -570,5 +570,6 @@ AVCodec ff_sipr_decoder = {
     .priv_data_size = sizeof(SiprContext),
     .init           = sipr_decoder_init,
     .decode         = sipr_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

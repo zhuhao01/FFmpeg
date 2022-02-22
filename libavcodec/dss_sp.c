@@ -21,7 +21,7 @@
 
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
-#include "libavutil/mem.h"
+#include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 
 #include "avcodec.h"
@@ -33,7 +33,7 @@
 
 #define DSS_SP_FRAME_SIZE        42
 #define DSS_SP_SAMPLE_COUNT     (66 * SUBFRAMES)
-#define DSS_SP_FORMULA(a, b, c) (((((a) << 15) + (b) * (c)) + 0x4000) >> 15)
+#define DSS_SP_FORMULA(a, b, c) ((int)((((a) * (1 << 15)) + (b) * (unsigned)(c)) + 0x4000) >> 15)
 
 typedef struct DssSpSubframe {
     int16_t gain;
@@ -295,7 +295,6 @@ static av_cold int dss_sp_decode_init(AVCodecContext *avctx)
     avctx->channels       = 1;
     avctx->sample_rate    = 11025;
 
-    memset(p->history, 0, sizeof(p->history));
     p->pulse_dec_mode = 1;
     p->avctx          = avctx;
 
@@ -499,7 +498,7 @@ static void dss_sp_scale_vector(int32_t *vec, int bits, int size)
             vec[i] = vec[i] >> -bits;
     else
         for (i = 0; i < size; i++)
-            vec[i] = vec[i] << bits;
+            vec[i] = vec[i] * (1 << bits);
 }
 
 static void dss_sp_update_buf(int32_t *hist, int32_t *vector)
@@ -524,12 +523,12 @@ static void dss_sp_shift_sq_sub(const int32_t *filter_buf,
         tmp = dst[a] * filter_buf[0];
 
         for (i = 14; i > 0; i--)
-            tmp -= error_buf[i] * filter_buf[i];
+            tmp -= error_buf[i] * (unsigned)filter_buf[i];
 
         for (i = 14; i > 0; i--)
             error_buf[i] = error_buf[i - 1];
 
-        tmp = (tmp + 4096) >> 13;
+        tmp = (int)(tmp + 4096U) >> 13;
 
         error_buf[1] = tmp;
 
@@ -773,7 +772,7 @@ static int dss_sp_decode_frame(AVCodecContext *avctx, void *data,
     return DSS_SP_FRAME_SIZE;
 }
 
-AVCodec ff_dss_sp_decoder = {
+const AVCodec ff_dss_sp_decoder = {
     .name           = "dss_sp",
     .long_name      = NULL_IF_CONFIG_SMALL("Digital Speech Standard - Standard Play mode (DSS SP)"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -781,5 +780,6 @@ AVCodec ff_dss_sp_decoder = {
     .priv_data_size = sizeof(DssSpContext),
     .init           = dss_sp_decode_init,
     .decode         = dss_sp_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

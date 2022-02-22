@@ -23,7 +23,7 @@
 
 #include "libavutil/common.h"
 #include "libavutil/float_dsp.h"
-#include "libavutil/mem.h"
+#include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
 #include "internal.h"
@@ -40,6 +40,11 @@
 
 #define DCA_LBR_TIME_SAMPLES    128
 #define DCA_LBR_TIME_HISTORY    8
+
+enum DCALBRHeader {
+    DCA_LBR_HEADER_SYNC_ONLY    = 1,
+    DCA_LBR_HEADER_DECODER_INIT = 2
+};
 
 typedef struct DCALbrTone {
     uint8_t     x_freq;     ///< Spectral line offset
@@ -124,6 +129,7 @@ typedef struct DCALbrDecoder {
 int ff_dca_lbr_parse(DCALbrDecoder *s, uint8_t *data, DCAExssAsset *asset);
 int ff_dca_lbr_filter_frame(DCALbrDecoder *s, AVFrame *frame);
 av_cold void ff_dca_lbr_flush(DCALbrDecoder *s);
+av_cold void ff_dca_lbr_init_tables(void);
 av_cold int ff_dca_lbr_init(DCALbrDecoder *s);
 av_cold void ff_dca_lbr_close(DCALbrDecoder *s);
 

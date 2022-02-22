@@ -25,23 +25,6 @@
 //                            const uint8_t *ref, ptrdiff_t ref_stride,
 //                            int h, int mx, int my);
 
-function ff_vp9_copy64_aarch64, export=1
-1:
-        ldp             x5,  x6,  [x2]
-        ldp             x7,  x8,  [x2, #16]
-        stp             x5,  x6,  [x0]
-        ldp             x9,  x10, [x2, #32]
-        stp             x7,  x8,  [x0, #16]
-        subs            w4,  w4,  #1
-        ldp             x11, x12, [x2, #48]
-        stp             x9,  x10, [x0, #32]
-        stp             x11, x12, [x0, #48]
-        add             x2,  x2,  x3
-        add             x0,  x0,  x1
-        b.ne            1b
-        ret
-endfunc
-
 function ff_vp9_avg64_neon, export=1
         mov             x5,  x0
 1:
@@ -60,19 +43,6 @@ function ff_vp9_avg64_neon, export=1
         urhadd          v18.16b, v18.16b, v22.16b
         urhadd          v19.16b, v19.16b, v23.16b
         st1             {v16.16b, v17.16b, v18.16b, v19.16b}, [x5], x1
-        b.ne            1b
-        ret
-endfunc
-
-function ff_vp9_copy32_aarch64, export=1
-1:
-        ldp             x5,  x6,  [x2]
-        ldp             x7,  x8,  [x2, #16]
-        stp             x5,  x6,  [x0]
-        subs            w4,  w4,  #1
-        stp             x7,  x8,  [x0, #16]
-        add             x2,  x2,  x3
-        add             x0,  x0,  x1
         b.ne            1b
         ret
 endfunc
@@ -193,41 +163,52 @@ endfunc
 // for size >= 16), and multiply-accumulate into dst1 and dst3 (or
 // dst1-dst2 and dst3-dst4 for size >= 16)
 .macro extmla dst1, dst2, dst3, dst4, src1, src2, src3, src4, src5, src6, offset, size
-        ext             v20.16b, \src1, \src2, #(2*\offset)
-        ext             v22.16b, \src4, \src5, #(2*\offset)
+        ext             v20.16b, \src1\().16b, \src2\().16b, #(2*\offset)
+        ext             v22.16b, \src4\().16b, \src5\().16b, #(2*\offset)
 .if \size >= 16
-        mla             \dst1, v20.8h, v0.h[\offset]
-        ext             v21.16b, \src2, \src3, #(2*\offset)
-        mla             \dst3, v22.8h, v0.h[\offset]
-        ext             v23.16b, \src5, \src6, #(2*\offset)
-        mla             \dst2, v21.8h, v0.h[\offset]
-        mla             \dst4, v23.8h, v0.h[\offset]
+        mla             \dst1\().8h, v20.8h, v0.h[\offset]
+        ext             v21.16b, \src2\().16b, \src3\().16b, #(2*\offset)
+        mla             \dst3\().8h, v22.8h, v0.h[\offset]
+        ext             v23.16b, \src5\().16b, \src6\().16b, #(2*\offset)
+        mla             \dst2\().8h, v21.8h, v0.h[\offset]
+        mla             \dst4\().8h, v23.8h, v0.h[\offset]
+.elseif \size == 8
+        mla             \dst1\().8h, v20.8h, v0.h[\offset]
+        mla             \dst3\().8h, v22.8h, v0.h[\offset]
 .else
-        mla             \dst1, v20.8h, v0.h[\offset]
-        mla             \dst3, v22.8h, v0.h[\offset]
+        mla             \dst1\().4h, v20.4h, v0.h[\offset]
+        mla             \dst3\().4h, v22.4h, v0.h[\offset]
 .endif
 .endm
 // The same as above, but don't accumulate straight into the
 // destination, but use a temp register and accumulate with saturation.
 .macro extmulqadd dst1, dst2, dst3, dst4, src1, src2, src3, src4, src5, src6, offset, size
-        ext             v20.16b, \src1, \src2, #(2*\offset)
-        ext             v22.16b, \src4, \src5, #(2*\offset)
+        ext             v20.16b, \src1\().16b, \src2\().16b, #(2*\offset)
+        ext             v22.16b, \src4\().16b, \src5\().16b, #(2*\offset)
 .if \size >= 16
         mul             v20.8h, v20.8h, v0.h[\offset]
-        ext             v21.16b, \src2, \src3, #(2*\offset)
+        ext             v21.16b, \src2\().16b, \src3\().16b, #(2*\offset)
         mul             v22.8h, v22.8h, v0.h[\offset]
-        ext             v23.16b, \src5, \src6, #(2*\offset)
+        ext             v23.16b, \src5\().16b, \src6\().16b, #(2*\offset)
         mul             v21.8h, v21.8h, v0.h[\offset]
         mul             v23.8h, v23.8h, v0.h[\offset]
-.else
+.elseif \size == 8
         mul             v20.8h, v20.8h, v0.h[\offset]
         mul             v22.8h, v22.8h, v0.h[\offset]
+.else
+        mul             v20.4h, v20.4h, v0.h[\offset]
+        mul             v22.4h, v22.4h, v0.h[\offset]
 .endif
-        sqadd           \dst1, \dst1, v20.8h
-        sqadd           \dst3, \dst3, v22.8h
+.if \size == 4
+        sqadd           \dst1\().4h, \dst1\().4h, v20.4h
+        sqadd           \dst3\().4h, \dst3\().4h, v22.4h
+.else
+        sqadd           \dst1\().8h, \dst1\().8h, v20.8h
+        sqadd           \dst3\().8h, \dst3\().8h, v22.8h
 .if \size >= 16
-        sqadd           \dst2, \dst2, v21.8h
-        sqadd           \dst4, \dst4, v23.8h
+        sqadd           \dst2\().8h, \dst2\().8h, v21.8h
+        sqadd           \dst4\().8h, \dst4\().8h, v23.8h
+.endif
 .endif
 .endm
 
@@ -291,13 +272,13 @@ function \type\()_8tap_\size\()h_\idx1\idx2
         mul             v2.8h,  v5.8h,  v0.h[0]
         mul             v25.8h, v17.8h, v0.h[0]
 .endif
-        extmla          v1.8h,  v2.8h,  v24.8h, v25.8h, v4.16b,  v5.16b,  v6.16b,  v16.16b, v17.16b, v18.16b, 1,     \size
-        extmla          v1.8h,  v2.8h,  v24.8h, v25.8h, v4.16b,  v5.16b,  v6.16b,  v16.16b, v17.16b, v18.16b, 2,     \size
-        extmla          v1.8h,  v2.8h,  v24.8h, v25.8h, v4.16b,  v5.16b,  v6.16b,  v16.16b, v17.16b, v18.16b, \idx1, \size
-        extmla          v1.8h,  v2.8h,  v24.8h, v25.8h, v4.16b,  v5.16b,  v6.16b,  v16.16b, v17.16b, v18.16b, 5,     \size
-        extmla          v1.8h,  v2.8h,  v24.8h, v25.8h, v4.16b,  v5.16b,  v6.16b,  v16.16b, v17.16b, v18.16b, 6,     \size
-        extmla          v1.8h,  v2.8h,  v24.8h, v25.8h, v4.16b,  v5.16b,  v6.16b,  v16.16b, v17.16b, v18.16b, 7,     \size
-        extmulqadd      v1.8h,  v2.8h,  v24.8h, v25.8h, v4.16b,  v5.16b,  v6.16b,  v16.16b, v17.16b, v18.16b, \idx2, \size
+        extmla          v1,  v2,  v24, v25, v4,  v5,  v6,  v16, v17, v18, 1,     \size
+        extmla          v1,  v2,  v24, v25, v4,  v5,  v6,  v16, v17, v18, 2,     \size
+        extmla          v1,  v2,  v24, v25, v4,  v5,  v6,  v16, v17, v18, \idx1, \size
+        extmla          v1,  v2,  v24, v25, v4,  v5,  v6,  v16, v17, v18, 5,     \size
+        extmla          v1,  v2,  v24, v25, v4,  v5,  v6,  v16, v17, v18, 6,     \size
+        extmla          v1,  v2,  v24, v25, v4,  v5,  v6,  v16, v17, v18, 7,     \size
+        extmulqadd      v1,  v2,  v24, v25, v4,  v5,  v6,  v16, v17, v18, \idx2, \size
 
         // Round, shift and saturate
         sqrshrun        v1.8b,   v1.8h,  #7
@@ -330,7 +311,7 @@ function \type\()_8tap_\size\()h_\idx1\idx2
         subs            x9,  x9,  #16
         st1             {v1.16b},  [x0], #16
         st1             {v24.16b}, [x6], #16
-        beq             3f
+        b.eq            3f
         mov             v4.16b,  v6.16b
         mov             v16.16b, v18.16b
         ld1             {v6.16b},  [x2], #16
@@ -377,10 +358,10 @@ function ff_vp9_\type\()_\filter\()\size\()_h_neon, export=1
         add             x9,  x6,  w5, uxtw #4
         mov             x5,  #\size
 .if \size >= 16
-        bge             \type\()_8tap_16h_34
+        b.ge            \type\()_8tap_16h_34
         b               \type\()_8tap_16h_43
 .else
-        bge             \type\()_8tap_\size\()h_34
+        b.ge            \type\()_8tap_\size\()h_34
         b               \type\()_8tap_\size\()h_43
 .endif
 endfunc

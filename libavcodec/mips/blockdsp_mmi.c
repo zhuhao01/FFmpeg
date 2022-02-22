@@ -24,7 +24,7 @@
 #include "blockdsp_mips.h"
 #include "libavutil/mips/mmiutils.h"
 
-void ff_fill_block16_mmi(uint8_t *block, uint8_t value, int line_size, int h)
+void ff_fill_block16_mmi(uint8_t *block, uint8_t value, ptrdiff_t line_size, int h)
 {
     double ftmp[1];
     DECLARE_VAR_ALL64;
@@ -48,7 +48,7 @@ void ff_fill_block16_mmi(uint8_t *block, uint8_t value, int line_size, int h)
     );
 }
 
-void ff_fill_block8_mmi(uint8_t *block, uint8_t value, int line_size, int h)
+void ff_fill_block8_mmi(uint8_t *block, uint8_t value, ptrdiff_t line_size, int h)
 {
     double ftmp0;
     DECLARE_VAR_ALL64;
@@ -76,8 +76,8 @@ void ff_clear_block_mmi(int16_t *block)
     double ftmp[2];
 
     __asm__ volatile (
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
-        "xor        %[ftmp1],   %[ftmp1],       %[ftmp1]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp1],   %[ftmp1],       %[ftmp1]                \n\t"
         MMI_SQC1(%[ftmp0], %[ftmp1], %[block], 0x00)
         MMI_SQC1(%[ftmp0], %[ftmp1], %[block], 0x10)
         MMI_SQC1(%[ftmp0], %[ftmp1], %[block], 0x20)
@@ -97,8 +97,8 @@ void ff_clear_blocks_mmi(int16_t *block)
     double ftmp[2];
 
     __asm__ volatile (
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
-        "xor        %[ftmp1],   %[ftmp1],       %[ftmp1]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp1],   %[ftmp1],       %[ftmp1]                \n\t"
         MMI_SQC1(%[ftmp0], %[ftmp1], %[block], 0x00)
         MMI_SQC1(%[ftmp0], %[ftmp1], %[block], 0x10)
         MMI_SQC1(%[ftmp0], %[ftmp1], %[block], 0x20)

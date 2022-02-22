@@ -22,12 +22,11 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/cpu.h"
-#include "libavutil/mem.h"
 #include "libavutil/x86/cpu.h"
 #include "libavcodec/vp9dsp.h"
 #include "libavcodec/x86/vp9dsp_init.h"
 
-#if HAVE_YASM
+#if HAVE_X86ASM
 
 decl_fpel_func(put,  4,   , mmx);
 decl_fpel_func(put,  8,   , mmx);
@@ -212,11 +211,11 @@ ipred_func(32, tm, avx2);
 #undef ipred_dir_tm_funcs
 #undef ipred_dc_funcs
 
-#endif /* HAVE_YASM */
+#endif /* HAVE_X86ASM */
 
 av_cold void ff_vp9dsp_init_x86(VP9DSPContext *dsp, int bpp, int bitexact)
 {
-#if HAVE_YASM
+#if HAVE_X86ASM
     int cpu_flags;
 
     if (bpp == 10) {
@@ -412,5 +411,5 @@ av_cold void ff_vp9dsp_init_x86(VP9DSPContext *dsp, int bpp, int bitexact)
 #undef init_subpel2
 #undef init_subpel3
 
-#endif /* HAVE_YASM */
+#endif /* HAVE_X86ASM */
 }

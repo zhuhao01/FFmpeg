@@ -26,8 +26,9 @@
 #include "avcodec.h"
 #include "ass.h"
 #include "htmlsubtitles.h"
+#include "internal.h"
 
-static void srt_to_ass(AVCodecContext *avctx, AVBPrint *dst,
+static int srt_to_ass(AVCodecContext *avctx, AVBPrint *dst,
                        const char *in, int x1, int y1, int x2, int y2)
 {
     if (x1 >= 0 && y1 >= 0) {
@@ -49,7 +50,7 @@ static void srt_to_ass(AVCodecContext *avctx, AVBPrint *dst,
         }
     }
 
-    ff_htmlmarkup_to_ass(avctx, dst, in);
+    return ff_htmlmarkup_to_ass(avctx, dst, in);
 }
 
 static int srt_decode_frame(AVCodecContext *avctx,
@@ -58,7 +59,8 @@ static int srt_decode_frame(AVCodecContext *avctx,
     AVSubtitle *sub = data;
     AVBPrint buffer;
     int x1 = -1, y1 = -1, x2 = -1, y2 = -1;
-    int size, ret;
+    int ret;
+    size_t size;
     const uint8_t *p = av_packet_get_side_data(avpkt, AV_PKT_DATA_SUBTITLE_POSITION, &size);
     FFASSDecoderContext *s = avctx->priv_data;
 
@@ -74,8 +76,9 @@ static int srt_decode_frame(AVCodecContext *avctx,
 
     av_bprint_init(&buffer, 0, AV_BPRINT_SIZE_UNLIMITED);
 
-    srt_to_ass(avctx, &buffer, avpkt->data, x1, y1, x2, y2);
-    ret = ff_ass_add_rect(sub, buffer.str, s->readorder++, 0, NULL, NULL);
+    ret = srt_to_ass(avctx, &buffer, avpkt->data, x1, y1, x2, y2);
+    if (ret >= 0)
+        ret = ff_ass_add_rect(sub, buffer.str, s->readorder++, 0, NULL, NULL);
     av_bprint_finalize(&buffer, NULL);
     if (ret < 0)
         return ret;
@@ -86,7 +89,7 @@ static int srt_decode_frame(AVCodecContext *avctx,
 
 #if CONFIG_SRT_DECODER
 /* deprecated decoder */
-AVCodec ff_srt_decoder = {
+const AVCodec ff_srt_decoder = {
     .name         = "srt",
     .long_name    = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
     .type         = AVMEDIA_TYPE_SUBTITLE,
@@ -95,11 +98,12 @@ AVCodec ff_srt_decoder = {
     .decode       = srt_decode_frame,
     .flush        = ff_ass_decoder_flush,
     .priv_data_size = sizeof(FFASSDecoderContext),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 
 #if CONFIG_SUBRIP_DECODER
-AVCodec ff_subrip_decoder = {
+const AVCodec ff_subrip_decoder = {
     .name         = "subrip",
     .long_name    = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
     .type         = AVMEDIA_TYPE_SUBTITLE,
@@ -108,5 +112,6 @@ AVCodec ff_subrip_decoder = {
     .decode       = srt_decode_frame,
     .flush        = ff_ass_decoder_flush,
     .priv_data_size = sizeof(FFASSDecoderContext),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

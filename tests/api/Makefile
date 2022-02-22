@@ -1,7 +1,7 @@
 APITESTPROGS-$(call ENCDEC, FLAC, FLAC) += api-flac
 APITESTPROGS-$(call DEMDEC, H264, H264) += api-h264
+APITESTPROGS-$(call DEMDEC, H264, H264) += api-h264-slice
 APITESTPROGS-yes += api-seek
-APITESTPROGS-yes += api-codec-param
 APITESTPROGS-$(call DEMDEC, H263, H263) += api-band
 APITESTPROGS-$(HAVE_THREADS) += api-threadmessage
 APITESTPROGS += $(APITESTPROGS-yes)
@@ -14,7 +14,7 @@ $(APITESTOBJS): | $(sort $(dir $(APITESTOBJS)))
 $(APITESTOBJS) $(APITESTOBJS:.o=.i): CPPFLAGS += -DTEST
 $(APITESTOBJS) $(APITESTOBJS:.o=.i): CFLAGS += -Umain
 
-$(APITESTPROGS): %$(EXESUF): %.o $(EXEOBJS) $(FF_DEP_LIBS)
+$(APITESTPROGS): %$(EXESUF): %.o $(FF_DEP_LIBS)
 	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $(filter %.o,$^) $(FF_EXTRALIBS) $(ELIBS)
 
 testclean::

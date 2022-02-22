@@ -34,9 +34,9 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
+#include "libavutil/bswap.h"
 #include "libavutil/intreadwrite.h"
 
-#include "avcodec.h"
 #include "rangecoder.h"
 
 av_cold void ff_init_range_encoder(RangeCoder *c, uint8_t *buf, int buf_size)
@@ -58,6 +58,11 @@ av_cold void ff_init_range_decoder(RangeCoder *c, const uint8_t *buf,
 
     c->low         = AV_RB16(c->bytestream);
     c->bytestream += 2;
+    c->overread    = 0;
+    if (c->low >= 0xFF00) {
+        c->low = 0xFF00;
+        c->bytestream_end = c->bytestream;
+    }
 }
 
 void ff_build_rac_states(RangeCoder *c, int factor, int max_p)
@@ -101,8 +106,10 @@ void ff_build_rac_states(RangeCoder *c, int factor, int max_p)
 }
 
 /* Return the number of bytes written. */
-int ff_rac_terminate(RangeCoder *c)
+int ff_rac_terminate(RangeCoder *c, int version)
 {
+    if (version == 1)
+        put_rac(c, (uint8_t[]) { 129 }, 0);
     c->range = 0xFF;
     c->low  += 0xFF;
     renorm_encoder(c);

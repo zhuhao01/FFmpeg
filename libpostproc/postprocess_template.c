@@ -23,6 +23,7 @@
  * mmx/mmx2/3dnow postprocess code.
  */
 
+#include "libavutil/mem_internal.h"
 #include "libavutil/x86/asm.h"
 
 /* A single TEMPLATE_PP_* should be defined (to 1) when this template is
@@ -1184,10 +1185,10 @@ FIND_MIN_MAX((%0, %1, 8))
 #endif
         "movq %%mm6, %%mm0                      \n\t" // max
         "psubb %%mm7, %%mm6                     \n\t" // max - min
-        "push %4                              \n\t"
-        "movd %%mm6, %k4                        \n\t"
-        "cmpb "MANGLE(deringThreshold)", %b4    \n\t"
-        "pop %4                               \n\t"
+        "push %%"FF_REG_a"                      \n\t"
+        "movd %%mm6, %%eax                      \n\t"
+        "cmpb "MANGLE(deringThreshold)", %%al   \n\t"
+        "pop %%"FF_REG_a"                       \n\t"
         " jb 1f                                 \n\t"
         PAVGB(%%mm0, %%mm7)                           // a=(max + min)/2
         "punpcklbw %%mm7, %%mm7                 \n\t"
@@ -1317,7 +1318,7 @@ DERING_CORE((%0, %1, 8)       ,(%%FF_REGd, %1, 4),%%mm2,%%mm4,%%mm0,%%mm3,%%mm5,
         "1:                        \n\t"
         : : "r" (src), "r" ((x86_reg)stride), "m" (c->pQPb), "m"(c->pQPb2), "q"(tmp)
           NAMED_CONSTRAINTS_ADD(deringThreshold,b00,b02,b08)
-        : "%"FF_REG_a, "%"FF_REG_d, "%"FF_REG_sp
+        : "%"FF_REG_a, "%"FF_REG_d
     );
 #else // HAVE_7REGS && (TEMPLATE_PP_MMXEXT || TEMPLATE_PP_3DNOW)
     int y;
@@ -2548,7 +2549,7 @@ static av_always_inline void RENAME(do_a_deblock)(uint8_t *src, int step, int st
     int64_t dc_mask, eq_mask, both_masks;
     int64_t sums[10*8*2];
     src+= step*3; // src points to begin of the 8x8 Block
-    //{ START_TIMER
+
     __asm__ volatile(
         "movq %0, %%mm7                         \n\t"
         "movq %1, %%mm6                         \n\t"
@@ -3071,17 +3072,11 @@ static av_always_inline void RENAME(do_a_deblock)(uint8_t *src, int step, int st
             : "%"FF_REG_a
         );
     }
-/*if(step==16){
-    STOP_TIMER("step16")
-}else{
-    STOP_TIMER("stepX")
-}
-    } */
 }
 #endif //TEMPLATE_PP_MMX
 
 static void RENAME(postProcess)(const uint8_t src[], int srcStride, uint8_t dst[], int dstStride, int width, int height,
-                                const QP_STORE_T QPs[], int QPStride, int isColor, PPContext *c);
+                                const int8_t QPs[], int QPStride, int isColor, PPContext *c);
 
 /**
  * Copy a block from src to dst and fixes the blacklevel.
@@ -3309,7 +3304,7 @@ static inline void RENAME(prefetcht2)(const void *p)
  * Filter array of bytes (Y or U or V values)
  */
 static void RENAME(postProcess)(const uint8_t src[], int srcStride, uint8_t dst[], int dstStride, int width, int height,
-                                const QP_STORE_T QPs[], int QPStride, int isColor, PPContext *c2)
+                                const int8_t QPs[], int QPStride, int isColor, PPContext *c2)
 {
     DECLARE_ALIGNED(8, PPContext, c)= *c2; //copy to stack for faster access
     int x,y;
@@ -3600,7 +3595,6 @@ static void RENAME(postProcess)(const uint8_t src[], int srcStride, uint8_t dst[
 
           for(x = startx, qp_index=0; x < endx; x+=BLOCK_SIZE, qp_index++){
             const int stride= dstStride;
-            av_unused uint8_t *tmpXchg;
             c.QP = c.QP_block[qp_index];
             c.nonBQP = c.nonBQP_block[qp_index];
             c.pQPb = c.pQPb_block[qp_index];
@@ -3673,9 +3667,7 @@ static void RENAME(postProcess)(const uint8_t src[], int srcStride, uint8_t dst[
             srcBlock+=8;
 
 #if TEMPLATE_PP_MMX
-            tmpXchg= tempBlock1;
-            tempBlock1= tempBlock2;
-            tempBlock2 = tmpXchg;
+            FFSWAP(uint8_t *, tempBlock1, tempBlock2);
 #endif
           }
         }

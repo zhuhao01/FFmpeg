@@ -23,10 +23,12 @@
 #include "libavutil/attributes.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
+#include "libavutil/thread.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
 #include "h263.h"
 #include "mpeg4video.h"
+#include "profiles.h"
 
 /* The uni_DCtab_* tables below contain unified bits+length tables to encode DC
  * differences in MPEG-4. Unified in the sense that the specification specifies
@@ -104,7 +106,7 @@ static inline void restore_ac_coeffs(MpegEncContext *s, int16_t block[6][64],
     memcpy(s->block_last_index, zigzag_last_index, sizeof(int) * 6);
 
     for (n = 0; n < 6; n++) {
-        int16_t *ac_val = s->ac_val[0][0] + s->block_index[n] * 16;
+        int16_t *ac_val = &s->ac_val[0][0][0] + s->block_index[n] * 16;
 
         st[n] = s->intra_scantable.permutated;
         if (dir[n]) {
@@ -143,7 +145,7 @@ static inline int decide_ac_pred(MpegEncContext *s, int16_t block[6][64],
         score -= get_block_rate(s, block[n], s->block_last_index[n],
                                 s->intra_scantable.permutated);
 
-        ac_val  = s->ac_val[0][0] + s->block_index[n] * 16;
+        ac_val  = &s->ac_val[0][0][0] + s->block_index[n] * 16;
         ac_val1 = ac_val;
         if (dir[n]) {
             const int xy = s->mb_x + s->mb_y * s->mb_stride - s->mb_stride;
@@ -256,7 +258,6 @@ void ff_clean_mpeg4_qscales(MpegEncContext *s)
  */
 static inline void mpeg4_encode_dc(PutBitContext *s, int level, int n)
 {
-#if 1
     /* DC will overflow if level is outside the [-255,255] range. */
     level += 256;
     if (n < 4) {
@@ -266,33 +267,6 @@ static inline void mpeg4_encode_dc(PutBitContext *s, int level, int n)
         /* chrominance */
         put_bits(s, uni_DCtab_chrom_len[level], uni_DCtab_chrom_bits[level]);
     }
-#else
-    int size, v;
-    /* find number of bits */
-    size = 0;
-    v    = abs(level);
-    while (v) {
-        v >>= 1;
-        size++;
-    }
-
-    if (n < 4) {
-        /* luminance */
-        put_bits(s, ff_mpeg4_DCtab_lum[size][1], ff_mpeg4_DCtab_lum[size][0]);
-    } else {
-        /* chrominance */
-        put_bits(s, ff_mpeg4_DCtab_chrom[size][1], ff_mpeg4_DCtab_chrom[size][0]);
-    }
-
-    /* encode remaining bits */
-    if (size > 0) {
-        if (level < 0)
-            level = (-level) ^ ((1 << size) - 1);
-        put_bits(s, size, level);
-        if (size > 8)
-            put_bits(s, 1, 1);
-    }
-#endif
 }
 
 static inline int mpeg4_get_dc_length(int level, int n)
@@ -910,7 +884,7 @@ void ff_set_mpeg4_time(MpegEncContext *s)
 
 static void mpeg4_encode_gop_header(MpegEncContext *s)
 {
-    int hours, minutes, seconds;
+    int64_t hours, minutes, seconds;
     int64_t time;
 
     put_bits(&s->pb, 16, 0);
@@ -987,9 +961,6 @@ static void mpeg4_encode_vol_header(MpegEncContext *s,
                                     int vol_number)
 {
     int vo_ver_id;
-
-    if (!CONFIG_MPEG4_ENCODER)
-        return;
 
     if (s->max_b_frames || s->quarter_sample) {
         vo_ver_id  = 5;
@@ -1081,7 +1052,7 @@ static void mpeg4_encode_vol_header(MpegEncContext *s,
     if (!(s->avctx->flags & AV_CODEC_FLAG_BITEXACT)) {
         put_bits(&s->pb, 16, 0);
         put_bits(&s->pb, 16, 0x1B2);    /* user_data */
-        avpriv_put_string(&s->pb, LIBAVCODEC_IDENT, 0);
+        ff_put_string(&s->pb, LIBAVCODEC_IDENT, 0);
     }
 }
 
@@ -1296,11 +1267,21 @@ static av_cold void init_uni_mpeg4_rl_tab(RLTable *rl, uint32_t *bits_tab,
     }
 }
 
+static av_cold void mpeg4_encode_init_static(void)
+{
+    init_uni_dc_tab();
+
+    ff_mpeg4_init_rl_intra();
+
+    init_uni_mpeg4_rl_tab(&ff_mpeg4_rl_intra, uni_mpeg4_intra_rl_bits, uni_mpeg4_intra_rl_len);
+    init_uni_mpeg4_rl_tab(&ff_h263_rl_inter,  uni_mpeg4_inter_rl_bits, uni_mpeg4_inter_rl_len);
+}
+
 static av_cold int encode_init(AVCodecContext *avctx)
 {
+    static AVOnce init_static_once = AV_ONCE_INIT;
     MpegEncContext *s = avctx->priv_data;
     int ret;
-    static int done = 0;
 
     if (avctx->width >= (1<<13) || avctx->height >= (1<<13)) {
         av_log(avctx, AV_LOG_ERROR, "dimensions too large for MPEG-4\n");
@@ -1310,16 +1291,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
     if ((ret = ff_mpv_encode_init(avctx)) < 0)
         return ret;
 
-    if (!done) {
-        done = 1;
-
-        init_uni_dc_tab();
-
-        ff_rl_init(&ff_mpeg4_rl_intra, ff_mpeg4_static_rl_table_store[0]);
-
-        init_uni_mpeg4_rl_tab(&ff_mpeg4_rl_intra, uni_mpeg4_intra_rl_bits, uni_mpeg4_intra_rl_len);
-        init_uni_mpeg4_rl_tab(&ff_h263_rl_inter, uni_mpeg4_inter_rl_bits, uni_mpeg4_inter_rl_len);
-    }
+    ff_thread_once(&init_static_once, mpeg4_encode_init_static);
 
     s->min_qcoeff               = -2048;
     s->max_qcoeff               = 2047;
@@ -1334,6 +1306,8 @@ static av_cold int encode_init(AVCodecContext *avctx)
 
     if (s->avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
         s->avctx->extradata = av_malloc(1024);
+        if (!s->avctx->extradata)
+            return AVERROR(ENOMEM);
         init_put_bits(&s->pb, s->avctx->extradata, 1024);
 
         if (!(s->workaround_bugs & FF_BUG_MS))
@@ -1342,7 +1316,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
 
 //            ff_mpeg4_stuffing(&s->pb); ?
         flush_put_bits(&s->pb);
-        s->avctx->extradata_size = (put_bits_count(&s->pb) + 7) >> 3;
+        s->avctx->extradata_size = put_bytes_output(&s->pb);
     }
     return 0;
 }
@@ -1381,8 +1355,8 @@ void ff_mpeg4_merge_partitions(MpegEncContext *s)
     flush_put_bits(&s->tex_pb);
 
     set_put_bits_buffer_size(&s->pb, s->pb2.buf_end - s->pb.buf);
-    avpriv_copy_bits(&s->pb, s->pb2.buf, pb2_len);
-    avpriv_copy_bits(&s->pb, s->tex_pb.buf, tex_pb_len);
+    ff_copy_bits(&s->pb, s->pb2.buf, pb2_len);
+    ff_copy_bits(&s->pb, s->tex_pb.buf, tex_pb_len);
     s->last_bits = put_bits_count(&s->pb);
 }
 
@@ -1403,7 +1377,15 @@ void ff_mpeg4_encode_video_packet_header(MpegEncContext *s)
 static const AVOption options[] = {
     { "data_partitioning", "Use data partitioning.",      OFFSET(data_partitioning), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "alternate_scan",    "Enable alternate scantable.", OFFSET(alternate_scan),    AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
+    { "mpeg_quant",        "Use MPEG quantizers instead of H.263",
+      OFFSET(mpeg_quant), AV_OPT_TYPE_INT, {.i64 = 0 }, 0, 1, VE },
+    FF_MPV_COMMON_BFRAME_OPTS
     FF_MPV_COMMON_OPTS
+#if FF_API_MPEGVIDEO_OPTS
+    FF_MPV_DEPRECATED_A53_CC_OPT
+    FF_MPV_DEPRECATED_MATRIX_OPT
+#endif
+    FF_MPEG4_PROFILE_OPTS
     { NULL },
 };
 
@@ -1414,7 +1396,7 @@ static const AVClass mpeg4enc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_mpeg4_encoder = {
+const AVCodec ff_mpeg4_encoder = {
     .name           = "mpeg4",
     .long_name      = NULL_IF_CONFIG_SMALL("MPEG-4 part 2"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -1425,5 +1407,6 @@ AVCodec ff_mpeg4_encoder = {
     .close          = ff_mpv_encode_end,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SLICE_THREADS,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .priv_class     = &mpeg4enc_class,
 };

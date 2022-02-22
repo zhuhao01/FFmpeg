@@ -107,7 +107,7 @@ static int decode_bmv_frame(const uint8_t *source, int src_len, uint8_t *frame, 
                     if (src < source || src >= source_end)
                         return AVERROR_INVALIDDATA;
                     shift += 2;
-                    val |= *src << shift;
+                    val |= (unsigned)*src << shift;
                     if (*src & 0xC)
                         break;
                 }
@@ -193,7 +193,6 @@ static int decode_bmv_frame(const uint8_t *source, int src_len, uint8_t *frame, 
         if (dst == dst_end)
             return 0;
     }
-    return 0;
 }
 
 static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
@@ -286,7 +285,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_bmv_video_decoder = {
+const AVCodec ff_bmv_video_decoder = {
     .name           = "bmv_video",
     .long_name      = NULL_IF_CONFIG_SMALL("Discworld II BMV video"),
     .type           = AVMEDIA_TYPE_VIDEO,

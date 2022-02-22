@@ -20,6 +20,7 @@
  */
 
 #include "swresample_internal.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/frame.h"
 #include "libavutil/opt.h"
 
@@ -139,9 +140,10 @@ int swr_convert_frame(SwrContext *s,
 
     if (out) {
         if (!out->linesize[0]) {
-            out->nb_samples =   swr_get_delay(s, s->out_sample_rate)
-                              + in->nb_samples*(int64_t)s->out_sample_rate / s->in_sample_rate
-                              + 3;
+            out->nb_samples = swr_get_delay(s, s->out_sample_rate) + 3;
+            if (in) {
+                out->nb_samples += in->nb_samples*(int64_t)s->out_sample_rate / s->in_sample_rate;
+            }
             if ((ret = av_frame_get_buffer(out, 0)) < 0) {
                 if (setup)
                     swr_close(s);

@@ -241,7 +241,7 @@ static void put_videoinfoheader2(AVIOContext *pb, AVStream *st)
     avio_wl32(pb, 0);
     avio_wl32(pb, 0);
 
-    ff_put_bmp_header(pb, st->codecpar, ff_codec_bmp_tags, 0, 1);
+    ff_put_bmp_header(pb, st->codecpar, 0, 1, 0);
 
     if (st->codecpar->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
         int padding = (st->codecpar->extradata_size & 3) ? 4 - (st->codecpar->extradata_size & 3) : 0;
@@ -464,7 +464,7 @@ static int write_packet(AVFormatContext *s, AVPacket *pkt)
     AVStream    *st   = s->streams[pkt->stream_index];
 
     if (st->codecpar->codec_id == AV_CODEC_ID_MJPEG && !wctx->thumbnail.size) {
-        av_copy_packet(&wctx->thumbnail, pkt);
+        av_packet_ref(&wctx->thumbnail, pkt);
         return 0;
     } else if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
         int ret = ff_check_h264_startcode(s, st, pkt);
@@ -823,15 +823,13 @@ static int write_trailer(AVFormatContext *s)
     avio_seek(pb, 0x5c, SEEK_SET);
     avio_wl32(pb, file_end_pos >> WTV_SECTOR_BITS);
 
-    avio_flush(pb);
-
     av_free(wctx->sp_pairs);
     av_free(wctx->st_pairs);
     av_packet_unref(&wctx->thumbnail);
     return 0;
 }
 
-AVOutputFormat ff_wtv_muxer = {
+const AVOutputFormat ff_wtv_muxer = {
     .name           = "wtv",
     .long_name      = NULL_IF_CONFIG_SMALL("Windows Television (WTV)"),
     .extensions     = "wtv",
@@ -841,6 +839,5 @@ AVOutputFormat ff_wtv_muxer = {
     .write_header   = write_header,
     .write_packet   = write_packet,
     .write_trailer  = write_trailer,
-    .codec_tag      = (const AVCodecTag* const []){ ff_codec_bmp_tags,
-                                                    ff_codec_wav_tags, 0 },
+    .codec_tag      = ff_riff_codec_tags_list,
 };

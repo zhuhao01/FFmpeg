@@ -33,7 +33,7 @@ typedef struct ASSContext {
     unsigned readorder;
 } ASSContext;
 
-static int ass_probe(AVProbeData *p)
+static int ass_probe(const AVProbeData *p)
 {
     char buf[13];
     FFTextReader tr;
@@ -47,13 +47,6 @@ static int ass_probe(AVProbeData *p)
     if (!memcmp(buf, "[Script Info]", 13))
         return AVPROBE_SCORE_MAX;
 
-    return 0;
-}
-
-static int ass_read_close(AVFormatContext *s)
-{
-    ASSContext *ass = s->priv_data;
-    ff_subtitles_queue_clean(&ass->q);
     return 0;
 }
 
@@ -166,27 +159,14 @@ end:
     return res;
 }
 
-static int ass_read_packet(AVFormatContext *s, AVPacket *pkt)
-{
-    ASSContext *ass = s->priv_data;
-    return ff_subtitles_queue_read_packet(&ass->q, pkt);
-}
-
-static int ass_read_seek(AVFormatContext *s, int stream_index,
-                         int64_t min_ts, int64_t ts, int64_t max_ts, int flags)
-{
-    ASSContext *ass = s->priv_data;
-    return ff_subtitles_queue_seek(&ass->q, s, stream_index,
-                                   min_ts, ts, max_ts, flags);
-}
-
-AVInputFormat ff_ass_demuxer = {
+const AVInputFormat ff_ass_demuxer = {
     .name           = "ass",
     .long_name      = NULL_IF_CONFIG_SMALL("SSA (SubStation Alpha) subtitle"),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .priv_data_size = sizeof(ASSContext),
     .read_probe     = ass_probe,
     .read_header    = ass_read_header,
-    .read_packet    = ass_read_packet,
-    .read_close     = ass_read_close,
-    .read_seek2     = ass_read_seek,
+    .read_packet    = ff_subtitles_read_packet,
+    .read_close     = ff_subtitles_read_close,
+    .read_seek2     = ff_subtitles_read_seek,
 };

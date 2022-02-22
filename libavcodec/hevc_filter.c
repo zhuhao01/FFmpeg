@@ -25,10 +25,7 @@
 #include "libavutil/common.h"
 #include "libavutil/internal.h"
 
-#include "cabac_functions.h"
-#include "hevc.h"
-
-#include "bit_depth_template.c"
+#include "hevcdec.h"
 
 #define LUMA 0
 #define CB 1
@@ -139,9 +136,9 @@ static int get_qPy(HEVCContext *s, int xC, int yC)
 }
 
 static void copy_CTB(uint8_t *dst, const uint8_t *src, int width, int height,
-                     intptr_t stride_dst, intptr_t stride_src)
+                     ptrdiff_t stride_dst, ptrdiff_t stride_src)
 {
-int i, j;
+    int i, j;
 
     if (((intptr_t)dst | (intptr_t)src | stride_dst | stride_src) & 15) {
         for (i = 0; i < height; i++) {
@@ -170,7 +167,7 @@ static void copy_pixel(uint8_t *dst, const uint8_t *src, int pixel_shift)
 
 static void copy_vert(uint8_t *dst, const uint8_t *src,
                       int pixel_shift, int height,
-                      int stride_dst, int stride_src)
+                      ptrdiff_t stride_dst, ptrdiff_t stride_src)
 {
     int i;
     if (pixel_shift == 0) {
@@ -189,7 +186,7 @@ static void copy_vert(uint8_t *dst, const uint8_t *src,
 }
 
 static void copy_CTB_to_hv(HEVCContext *s, const uint8_t *src,
-                           int stride_src, int x, int y, int width, int height,
+                           ptrdiff_t stride_src, int x, int y, int width, int height,
                            int c_idx, int x_ctb, int y_ctb)
 {
     int sh = s->ps.sps->pixel_shift;
@@ -306,14 +303,14 @@ static void sao_filter_CTB(HEVCContext *s, int x, int y)
     for (c_idx = 0; c_idx < (s->ps.sps->chroma_format_idc ? 3 : 1); c_idx++) {
         int x0       = x >> s->ps.sps->hshift[c_idx];
         int y0       = y >> s->ps.sps->vshift[c_idx];
-        int stride_src = s->frame->linesize[c_idx];
+        ptrdiff_t stride_src = s->frame->linesize[c_idx];
         int ctb_size_h = (1 << (s->ps.sps->log2_ctb_size)) >> s->ps.sps->hshift[c_idx];
         int ctb_size_v = (1 << (s->ps.sps->log2_ctb_size)) >> s->ps.sps->vshift[c_idx];
         int width    = FFMIN(ctb_size_h, (s->ps.sps->width  >> s->ps.sps->hshift[c_idx]) - x0);
         int height   = FFMIN(ctb_size_v, (s->ps.sps->height >> s->ps.sps->vshift[c_idx]) - y0);
         int tab      = sao_tab[(FFALIGN(width, 8) >> 3) - 1];
         uint8_t *src = &s->frame->data[c_idx][y0 * stride_src + (x0 << s->ps.sps->pixel_shift)];
-        int stride_dst;
+        ptrdiff_t stride_dst;
         uint8_t *dst;
 
         switch (sao->type_idx[c_idx]) {
@@ -322,18 +319,18 @@ static void sao_filter_CTB(HEVCContext *s, int x, int y)
                            x_ctb, y_ctb);
             if (s->ps.pps->transquant_bypass_enable_flag ||
                 (s->ps.sps->pcm.loop_filter_disable_flag && s->ps.sps->pcm_enabled_flag)) {
-            dst = lc->edge_emu_buffer;
-            stride_dst = 2*MAX_PB_SIZE;
-            copy_CTB(dst, src, width << s->ps.sps->pixel_shift, height, stride_dst, stride_src);
-            s->hevcdsp.sao_band_filter[tab](src, dst, stride_src, stride_dst,
-                                            sao->offset_val[c_idx], sao->band_position[c_idx],
-                                            width, height);
-            restore_tqb_pixels(s, src, dst, stride_src, stride_dst,
-                               x, y, width, height, c_idx);
+                dst = lc->edge_emu_buffer;
+                stride_dst = 2*MAX_PB_SIZE;
+                copy_CTB(dst, src, width << s->ps.sps->pixel_shift, height, stride_dst, stride_src);
+                s->hevcdsp.sao_band_filter[tab](src, dst, stride_src, stride_dst,
+                                                sao->offset_val[c_idx], sao->band_position[c_idx],
+                                                width, height);
+                restore_tqb_pixels(s, src, dst, stride_src, stride_dst,
+                                   x, y, width, height, c_idx);
             } else {
-            s->hevcdsp.sao_band_filter[tab](src, src, stride_src, stride_src,
-                                            sao->offset_val[c_idx], sao->band_position[c_idx],
-                                            width, height);
+                s->hevcdsp.sao_band_filter[tab](src, src, stride_src, stride_src,
+                                                sao->offset_val[c_idx], sao->band_position[c_idx],
+                                                width, height);
             }
             sao->type_idx[c_idx] = SAO_APPLIED;
             break;
@@ -470,7 +467,7 @@ static int get_pcm(HEVCContext *s, int x, int y)
 
 #define TC_CALC(qp, bs)                                                 \
     tctable[av_clip((qp) + DEFAULT_INTRA_TC_OFFSET * ((bs) - 1) +       \
-                    (tc_offset >> 1 << 1),                              \
+                    (tc_offset & -2),                                   \
                     0, MAX_QP + DEFAULT_INTRA_TC_OFFSET)]
 
 static void deblocking_filter_CTB(HEVCContext *s, int x0, int y0)
@@ -842,9 +839,20 @@ void ff_hevc_deblocking_boundary_strengths(HEVCContext *s, int x0, int y0,
 void ff_hevc_hls_filter(HEVCContext *s, int x, int y, int ctb_size)
 {
     int x_end = x >= s->ps.sps->width  - ctb_size;
-    if (s->avctx->skip_loop_filter < AVDISCARD_ALL)
+    int skip = 0;
+    if (s->avctx->skip_loop_filter >= AVDISCARD_ALL ||
+        (s->avctx->skip_loop_filter >= AVDISCARD_NONKEY && !IS_IDR(s)) ||
+        (s->avctx->skip_loop_filter >= AVDISCARD_NONINTRA &&
+         s->sh.slice_type != HEVC_SLICE_I) ||
+        (s->avctx->skip_loop_filter >= AVDISCARD_BIDIR &&
+         s->sh.slice_type == HEVC_SLICE_B) ||
+        (s->avctx->skip_loop_filter >= AVDISCARD_NONREF &&
+        ff_hevc_nal_is_nonref(s->nal_unit_type)))
+        skip = 1;
+
+    if (!skip)
         deblocking_filter_CTB(s, x, y);
-    if (s->ps.sps->sao_enabled) {
+    if (s->ps.sps->sao_enabled && !skip) {
         int y_end = y >= s->ps.sps->height - ctb_size;
         if (y && x)
             sao_filter_CTB(s, x - ctb_size, y - ctb_size);

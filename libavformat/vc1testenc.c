@@ -73,15 +73,14 @@ static int vc1test_write_trailer(AVFormatContext *s)
     RCVContext *ctx = s->priv_data;
     AVIOContext *pb = s->pb;
 
-    if (s->pb->seekable) {
+    if (s->pb->seekable & AVIO_SEEKABLE_NORMAL) {
         avio_seek(pb, 0, SEEK_SET);
         avio_wl24(pb, ctx->frames);
-        avio_flush(pb);
     }
     return 0;
 }
 
-AVOutputFormat ff_vc1t_muxer = {
+const AVOutputFormat ff_vc1t_muxer = {
     .name              = "vc1test",
     .long_name         = NULL_IF_CONFIG_SMALL("VC-1 test bitstream"),
     .extensions        = "rcv",

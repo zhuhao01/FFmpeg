@@ -29,7 +29,8 @@
 
 #include "libavutil/channel_layout.h"
 #include "libavutil/float_dsp.h"
-#include "libavutil/mem.h"
+#include "libavutil/mem_internal.h"
+#include "libavutil/thread.h"
 #include "avcodec.h"
 #include "internal.h"
 #include "get_bits.h"
@@ -104,26 +105,24 @@ static const struct frame_type_desc {
     uint8_t dbl_pulses;   ///< how many pulse vectors have pulse pairs
                           ///< (rather than just one single pulse)
                           ///< only if #fcb_type == #FCB_TYPE_EXC_PULSES
-    uint16_t frame_size;  ///< the amount of bits that make up the block
-                          ///< data (per frame)
 } frame_descs[17] = {
-    { 1, 0, ACB_TYPE_NONE,       FCB_TYPE_SILENCE,    0,   0 },
-    { 2, 1, ACB_TYPE_NONE,       FCB_TYPE_HARDCODED,  0,  28 },
-    { 2, 1, ACB_TYPE_ASYMMETRIC, FCB_TYPE_AW_PULSES,  0,  46 },
-    { 2, 1, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 2,  80 },
-    { 2, 1, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 5, 104 },
-    { 4, 2, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 0, 108 },
-    { 4, 2, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 2, 132 },
-    { 4, 2, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 5, 168 },
-    { 2, 1, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 0,  64 },
-    { 2, 1, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 2,  80 },
-    { 2, 1, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 5, 104 },
-    { 4, 2, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 0, 108 },
-    { 4, 2, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 2, 132 },
-    { 4, 2, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 5, 168 },
-    { 8, 3, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 0, 176 },
-    { 8, 3, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 2, 208 },
-    { 8, 3, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 5, 256 }
+    { 1, 0, ACB_TYPE_NONE,       FCB_TYPE_SILENCE,    0 },
+    { 2, 1, ACB_TYPE_NONE,       FCB_TYPE_HARDCODED,  0 },
+    { 2, 1, ACB_TYPE_ASYMMETRIC, FCB_TYPE_AW_PULSES,  0 },
+    { 2, 1, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 2 },
+    { 2, 1, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 5 },
+    { 4, 2, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 0 },
+    { 4, 2, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 2 },
+    { 4, 2, ACB_TYPE_ASYMMETRIC, FCB_TYPE_EXC_PULSES, 5 },
+    { 2, 1, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 0 },
+    { 2, 1, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 2 },
+    { 2, 1, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 5 },
+    { 4, 2, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 0 },
+    { 4, 2, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 2 },
+    { 4, 2, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 5 },
+    { 8, 3, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 0 },
+    { 8, 3, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 2 },
+    { 8, 3, ACB_TYPE_HAMMING,    FCB_TYPE_EXC_PULSES, 5 }
 };
 
 /**
@@ -160,10 +159,6 @@ typedef struct WMAVoiceContext {
     int lsp_q_mode;               ///< defines quantizer defaults [0, 1]
     int lsp_def_mode;             ///< defines different sets of LSP defaults
                                   ///< [0, 1]
-    int frame_lsp_bitsize;        ///< size (in bits) of LSPs, when encoded
-                                  ///< per-frame (independent coding)
-    int sframe_lsp_bitsize;       ///< size (in bits) of LSPs, when encoded
-                                  ///< per superframe (residual coding)
 
     int min_pitch_val;            ///< base value for pitch parsing code
     int max_pitch_val;            ///< max value + 1 for pitch parsing
@@ -316,7 +311,7 @@ static av_cold int decode_vbmtree(GetBitContext *gb, int8_t vbm_tree[25])
     return 0;
 }
 
-static av_cold void wmavoice_init_static_data(AVCodec *codec)
+static av_cold void wmavoice_init_static_data(void)
 {
     static const uint8_t bits[] = {
          2,  2,  2,  4,  4,  4,
@@ -371,8 +366,11 @@ static av_cold void wmavoice_flush(AVCodecContext *ctx)
  */
 static av_cold int wmavoice_decode_init(AVCodecContext *ctx)
 {
-    int n, flags, pitch_range, lsp16_flag;
+    static AVOnce init_static_once = AV_ONCE_INIT;
+    int n, flags, pitch_range, lsp16_flag, ret;
     WMAVoiceContext *s = ctx->priv_data;
+
+    ff_thread_once(&init_static_once, wmavoice_init_static_data);
 
     /**
      * Extradata layout:
@@ -388,7 +386,7 @@ static av_cold int wmavoice_decode_init(AVCodecContext *ctx)
                ctx->extradata_size);
         return AVERROR_INVALIDDATA;
     }
-    if (ctx->block_align <= 0) {
+    if (ctx->block_align <= 0 || ctx->block_align > (1<<22)) {
         av_log(ctx, AV_LOG_ERROR, "Invalid block alignment %d.\n", ctx->block_align);
         return AVERROR_INVALIDDATA;
     }
@@ -397,10 +395,11 @@ static av_cold int wmavoice_decode_init(AVCodecContext *ctx)
     s->spillover_bitsize = 3 + av_ceil_log2(ctx->block_align);
     s->do_apf            =    flags & 0x1;
     if (s->do_apf) {
-        ff_rdft_init(&s->rdft,  7, DFT_R2C);
-        ff_rdft_init(&s->irdft, 7, IDFT_C2R);
-        ff_dct_init(&s->dct,  6, DCT_I);
-        ff_dct_init(&s->dst,  6, DST_I);
+        if ((ret = ff_rdft_init(&s->rdft,  7,  DFT_R2C)) < 0 ||
+            (ret = ff_rdft_init(&s->irdft, 7, IDFT_C2R)) < 0 ||
+            (ret = ff_dct_init (&s->dct,   6,    DCT_I)) < 0 ||
+            (ret = ff_dct_init (&s->dst,   6,    DST_I)) < 0)
+            return ret;
 
         ff_sine_window_init(s->cos, 256);
         memcpy(&s->sin[255], s->cos, 256 * sizeof(s->cos[0]));
@@ -423,12 +422,8 @@ static av_cold int wmavoice_decode_init(AVCodecContext *ctx)
     lsp16_flag           =    flags & 0x1000;
     if (lsp16_flag) {
         s->lsps               = 16;
-        s->frame_lsp_bitsize  = 34;
-        s->sframe_lsp_bitsize = 60;
     } else {
         s->lsps               = 10;
-        s->frame_lsp_bitsize  = 24;
-        s->sframe_lsp_bitsize = 48;
     }
     for (n = 0; n < s->lsps; n++)
         s->prev_lsps[n] = M_PI * (n + 1.0) / (s->lsps + 1.0);
@@ -438,6 +433,9 @@ static av_cold int wmavoice_decode_init(AVCodecContext *ctx)
         av_log(ctx, AV_LOG_ERROR, "Invalid VBM tree; broken extradata?\n");
         return AVERROR_INVALIDDATA;
     }
+
+    if (ctx->sample_rate >= INT_MAX / (256 * 37))
+        return AVERROR_INVALIDDATA;
 
     s->min_pitch_val    = ((ctx->sample_rate << 8)      /  400 + 50) >> 8;
     s->max_pitch_val    = ((ctx->sample_rate << 8) * 37 / 2000 + 50) >> 8;
@@ -639,12 +637,14 @@ static void calc_input_response(WMAVoiceContext *s, float *lpcs,
     for (n = 0; n <= 64; n++) {
         float pwr;
 
-        idx = FFMAX(0, lrint((max - lpcs[n]) * irange) - 1);
+        idx = lrint((max - lpcs[n]) * irange - 1);
+        idx = FFMAX(0, idx);
         pwr = wmavoice_denoise_power_table[s->denoise_strength][idx];
         lpcs[n] = angle_mul * pwr;
 
         /* 70.57 =~ 1/log10(1.0331663) */
-        idx = (pwr * gain_mul - 0.0295) * 70.570526123;
+        idx = av_clipf((pwr * gain_mul - 0.0295) * 70.570526123, 0, INT_MAX / 2);
+
         if (idx > 127) { // fall back if index falls outside table range
             coeffs[n] = wmavoice_energy_table[127] *
                         powf(1.0331663, idx - 127);
@@ -1526,7 +1526,7 @@ static int synth_frame(AVCodecContext *ctx, GetBitContext *gb, int frame_idx,
 
         /* "pitch-diff-per-sample" for calculation of pitch per sample */
         s->pitch_diff_sh16 =
-            ((cur_pitch_val - s->last_pitch_val) << 16) / MAX_FRAMESIZE;
+            (cur_pitch_val - s->last_pitch_val) * (1 << 16) / MAX_FRAMESIZE;
     }
 
     /* Global gain (if silence) and pitch-adaptive window coordinates */
@@ -1766,6 +1766,10 @@ static int synth_superframe(AVCodecContext *ctx, AVFrame *frame,
             stabilize_lsps(lsps[n], s->lsps);
     }
 
+    /* synth_superframe can run multiple times per packet
+     * free potential previous frame */
+    av_frame_unref(frame);
+
     /* get output buffer */
     frame->nb_samples = MAX_SFRAMESIZE;
     if ((res = ff_get_buffer(ctx, frame, 0)) < 0)
@@ -1842,6 +1846,9 @@ static int parse_packet_header(WMAVoiceContext *s)
     skip_bits(gb, 4);          // packet sequence number
     s->has_residual_lsps = get_bits1(gb);
     do {
+        if (get_bits_left(gb) < 6 + s->spillover_bitsize)
+            return AVERROR_INVALIDDATA;
+
         res = get_bits(gb, 6); // number of superframes per packet
                                // (minus first one if there is spillover)
         n_superframes += res;
@@ -1859,7 +1866,7 @@ static int parse_packet_header(WMAVoiceContext *s)
  * @param size size of the source data, in bytes
  * @param gb bit I/O context specifying the current position in the source.
  *           data. This function might use this to align the bit position to
- *           a whole-byte boundary before calling #avpriv_copy_bits() on aligned
+ *           a whole-byte boundary before calling #ff_copy_bits() on aligned
  *           source data
  * @param nbits the amount of bits to copy from source to target
  *
@@ -1875,12 +1882,12 @@ static void copy_bits(PutBitContext *pb,
     rmn_bits = rmn_bytes = get_bits_left(gb);
     if (rmn_bits < nbits)
         return;
-    if (nbits > pb->size_in_bits - put_bits_count(pb))
+    if (nbits > put_bits_left(pb))
         return;
     rmn_bits &= 7; rmn_bytes >>= 3;
     if ((rmn_bits = FFMIN(rmn_bits, nbits)) > 0)
         put_bits(pb, rmn_bits, get_bits(gb, rmn_bits));
-    avpriv_copy_bits(pb, data + size - rmn_bytes,
+    ff_copy_bits(pb, data + size - rmn_bytes,
                  FFMIN(nbits - rmn_bits, rmn_bytes << 3));
 }
 
@@ -1908,7 +1915,7 @@ static int wmavoice_decode_packet(AVCodecContext *ctx, void *data,
      * in a single "muxer" packet, so we artificially emulate that by
      * capping the packet size at ctx->block_align. */
     for (size = avpkt->size; size > ctx->block_align; size -= ctx->block_align);
-    init_get_bits(&s->gb, avpkt->data, size << 3);
+    init_get_bits8(&s->gb, avpkt->data, size);
 
     /* size == ctx->block_align is used to indicate whether we are dealing with
      * a new packet or a packet of which we already read the packet header
@@ -1990,16 +1997,16 @@ static av_cold int wmavoice_decode_end(AVCodecContext *ctx)
     return 0;
 }
 
-AVCodec ff_wmavoice_decoder = {
+const AVCodec ff_wmavoice_decoder = {
     .name             = "wmavoice",
     .long_name        = NULL_IF_CONFIG_SMALL("Windows Media Audio Voice"),
     .type             = AVMEDIA_TYPE_AUDIO,
     .id               = AV_CODEC_ID_WMAVOICE,
     .priv_data_size   = sizeof(WMAVoiceContext),
     .init             = wmavoice_decode_init,
-    .init_static_data = wmavoice_init_static_data,
     .close            = wmavoice_decode_end,
     .decode           = wmavoice_decode_packet,
     .capabilities     = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .flush            = wmavoice_flush,
 };

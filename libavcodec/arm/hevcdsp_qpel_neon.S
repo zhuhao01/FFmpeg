@@ -237,7 +237,7 @@
         vld1.8    {d23}, [r2], r3
         bne 8b
         subs  r5, #8
-        beq       99f
+        ble       99f
         mov r4, r12
         add r6, #16
         mov r0, r6
@@ -280,7 +280,7 @@
         vld1.8    {d23}, [r2], r3
         bne 8b
         subs  r5, #8
-        beq       99f
+        ble       99f
         mov r4, r12
         add r6, #8
         mov r0, r6
@@ -310,7 +310,7 @@
         vld1.8    {d23}, [r2], r3
         bne 8b
         subs  r5, #8
-        beq       99f
+        ble       99f
         mov r4, r12
         add r6, #8
         mov r0, r6
@@ -377,7 +377,7 @@ endfunc
         vst1.16   {q7}, [r0], r1
         bne       8b
         subs      r5, #8
-        beq      99f
+        ble       99f
         mov       r4, r12
         add       r6, #16
         mov       r0, r6
@@ -417,7 +417,7 @@ endfunc
         vst1.8    d0, [r0], r1
         bne       8b
         subs      r5, #8
-        beq      99f
+        ble       99f
         mov       r4, r12
         add       r6, #8
         mov       r0, r6
@@ -446,7 +446,7 @@ endfunc
         vst1.8         d0, [r0], r1
         bne       8b
         subs      r5, #8
-        beq      99f
+        ble       99f
         mov       r4, r12
         add       r6, #8
         add       r10, #16
@@ -533,7 +533,7 @@ endfunc
         \filterh q7
         bne 8b
         subs  r5, #8
-        beq 99f
+        ble 99f
         mov r4, r12
         add r6, #16
         mov r0, r6
@@ -594,7 +594,7 @@ endfunc
         \filterh q7
         bne 8b
         subs  r5, #8
-        beq 99f
+        ble 99f
         mov r4, r12
         add r6, #8
         mov r0, r6
@@ -641,7 +641,7 @@ endfunc
         \filterh q7
         bne 8b
         subs  r5, #8
-        beq 99f
+        ble 99f
         mov r4, r12
         add r6, #8
         mov r0, r6
@@ -667,76 +667,76 @@ endfunc
 
 
 function ff_hevc_put_qpel_h1v1_neon_8, export=1
-        hevc_put_qpel_hXvY_neon_8 qpel_filter_1 qpel_filter_1_32b
+        hevc_put_qpel_hXvY_neon_8 qpel_filter_1, qpel_filter_1_32b
 endfunc
 
 function ff_hevc_put_qpel_h2v1_neon_8, export=1
-        hevc_put_qpel_hXvY_neon_8 qpel_filter_2 qpel_filter_1_32b
+        hevc_put_qpel_hXvY_neon_8 qpel_filter_2, qpel_filter_1_32b
 endfunc
 
 function ff_hevc_put_qpel_h3v1_neon_8, export=1
-        hevc_put_qpel_hXvY_neon_8 qpel_filter_3 qpel_filter_1_32b
+        hevc_put_qpel_hXvY_neon_8 qpel_filter_3, qpel_filter_1_32b
 endfunc
 
 function ff_hevc_put_qpel_h1v2_neon_8, export=1
-        hevc_put_qpel_hXvY_neon_8 qpel_filter_1 qpel_filter_2_32b
+        hevc_put_qpel_hXvY_neon_8 qpel_filter_1, qpel_filter_2_32b
 endfunc
 
 function ff_hevc_put_qpel_h2v2_neon_8, export=1
-        hevc_put_qpel_hXvY_neon_8 qpel_filter_2 qpel_filter_2_32b
+        hevc_put_qpel_hXvY_neon_8 qpel_filter_2, qpel_filter_2_32b
 endfunc
 
 function ff_hevc_put_qpel_h3v2_neon_8, export=1
-        hevc_put_qpel_hXvY_neon_8 qpel_filter_3 qpel_filter_2_32b
+        hevc_put_qpel_hXvY_neon_8 qpel_filter_3, qpel_filter_2_32b
 endfunc
 
 function ff_hevc_put_qpel_h1v3_neon_8, export=1
-        hevc_put_qpel_hXvY_neon_8 qpel_filter_1 qpel_filter_3_32b
+        hevc_put_qpel_hXvY_neon_8 qpel_filter_1, qpel_filter_3_32b
 endfunc
 
 function ff_hevc_put_qpel_h2v3_neon_8, export=1
-        hevc_put_qpel_hXvY_neon_8 qpel_filter_2 qpel_filter_3_32b
+        hevc_put_qpel_hXvY_neon_8 qpel_filter_2, qpel_filter_3_32b
 endfunc
 
 function ff_hevc_put_qpel_h3v3_neon_8, export=1
-        hevc_put_qpel_hXvY_neon_8 qpel_filter_3 qpel_filter_3_32b
+        hevc_put_qpel_hXvY_neon_8 qpel_filter_3, qpel_filter_3_32b
 endfunc
 
 
 function ff_hevc_put_qpel_uw_h1v1_neon_8, export=1
-        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_1 qpel_filter_1_32b
+        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_1, qpel_filter_1_32b
 endfunc
 
 function ff_hevc_put_qpel_uw_h2v1_neon_8, export=1
-        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_2 qpel_filter_1_32b
+        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_2, qpel_filter_1_32b
 endfunc
 
 function ff_hevc_put_qpel_uw_h3v1_neon_8, export=1
-        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_3 qpel_filter_1_32b
+        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_3, qpel_filter_1_32b
 endfunc
 
 function ff_hevc_put_qpel_uw_h1v2_neon_8, export=1
-        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_1 qpel_filter_2_32b
+        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_1, qpel_filter_2_32b
 endfunc
 
 function ff_hevc_put_qpel_uw_h2v2_neon_8, export=1
-        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_2 qpel_filter_2_32b
+        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_2, qpel_filter_2_32b
 endfunc
 
 function ff_hevc_put_qpel_uw_h3v2_neon_8, export=1
-        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_3 qpel_filter_2_32b
+        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_3, qpel_filter_2_32b
 endfunc
 
 function ff_hevc_put_qpel_uw_h1v3_neon_8, export=1
-        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_1 qpel_filter_3_32b
+        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_1, qpel_filter_3_32b
 endfunc
 
 function ff_hevc_put_qpel_uw_h2v3_neon_8, export=1
-        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_2 qpel_filter_3_32b
+        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_2, qpel_filter_3_32b
 endfunc
 
 function ff_hevc_put_qpel_uw_h3v3_neon_8, export=1
-        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_3 qpel_filter_3_32b
+        hevc_put_qpel_uw_hXvY_neon_8 qpel_filter_3, qpel_filter_3_32b
 endfunc
 
 .macro init_put_pixels

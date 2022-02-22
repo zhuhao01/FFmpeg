@@ -55,13 +55,10 @@ typedef struct CIDEntry {
     const uint16_t *run_codes;
     const uint8_t *run_bits, *run;
     int bit_rates[5]; ///< Helper to choose variants, rounded to nearest 5Mb/s
-    AVRational frame_rates[5];
     AVRational packet_scale;
 } CIDEntry;
 
-extern const CIDEntry ff_dnxhd_cid_table[];
-
-int ff_dnxhd_get_cid_table(int cid);
+const CIDEntry *ff_dnxhd_get_cid_table(int cid);
 int ff_dnxhd_find_cid(AVCodecContext *avctx, int bit_depth);
 void ff_dnxhd_print_profiles(AVCodecContext *avctx, int loglevel);
 
@@ -91,10 +88,7 @@ static av_always_inline uint64_t ff_dnxhd_parse_header_prefix(const uint8_t *buf
     return ff_dnxhd_check_header_prefix(prefix);
 }
 
-int avpriv_dnxhd_get_frame_size(int cid);
-int avpriv_dnxhd_get_interlaced(int cid);
-#if LIBAVCODEC_VERSION_MAJOR < 58
-attribute_deprecated
-uint64_t avpriv_dnxhd_parse_header_prefix(const uint8_t *buf);
-#endif
+int ff_dnxhd_get_frame_size(int cid);
+int ff_dnxhd_get_hr_frame_size(int cid, int w, int h);
+
 #endif /* AVCODEC_DNXHDDATA_H */

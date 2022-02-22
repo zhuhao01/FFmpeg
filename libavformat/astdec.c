@@ -25,7 +25,7 @@
 #include "internal.h"
 #include "ast.h"
 
-static int ast_probe(AVProbeData *p)
+static int ast_probe(const AVProbeData *p)
 {
     if (AV_RL32(p->buf) != MKTAG('S','T','R','M'))
         return 0;
@@ -102,7 +102,7 @@ static int ast_read_packet(AVFormatContext *s, AVPacket *pkt)
         pkt->stream_index = 0;
         pkt->pos = pos;
     } else {
-        av_log(s, AV_LOG_ERROR, "unknown chunk %x\n", type);
+        av_log(s, AV_LOG_ERROR, "unknown chunk %"PRIx32"\n", type);
         avio_skip(s->pb, size);
         ret = AVERROR_INVALIDDATA;
     }
@@ -110,7 +110,7 @@ static int ast_read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-AVInputFormat ff_ast_demuxer = {
+const AVInputFormat ff_ast_demuxer = {
     .name           = "ast",
     .long_name      = NULL_IF_CONFIG_SMALL("AST (Audio Stream)"),
     .read_probe     = ast_probe,
@@ -118,5 +118,5 @@ AVInputFormat ff_ast_demuxer = {
     .read_packet    = ast_read_packet,
     .extensions     = "ast",
     .flags          = AVFMT_GENERIC_INDEX,
-    .codec_tag      = (const AVCodecTag* const []){ff_codec_ast_tags, 0},
+    .codec_tag      = ff_ast_codec_tags_list,
 };
